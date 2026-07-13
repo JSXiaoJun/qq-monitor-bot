@@ -2,43 +2,44 @@
 
 群成员发送精确指令 `查监控` 后，机器人打开固定页面 `https://status.yyapi.cloud/status/ai-status`、截图并发回原群。服务通过 OneBot 11 WebSocket 与 NapCatQQ 等 QQ 机器人框架通信。
 
-## 1. 配置 OneBot
+## 1. Linux Docker 部署
 
-在 NapCatQQ 中启用 OneBot 11 WebSocket 服务，监听端口例如 `3001`。如果设置了访问令牌，机器人服务中也必须填写相同令牌。
-
-## 2. 配置机器人
+项目的 Compose 同时运行 NapCatQQ 和截图机器人。NapCat 的 OneBot 端口只在 Docker 私有网络内使用，不占用宿主机端口。
 
 ```bash
+git clone https://github.com/JSXiaoJun/qq-monitor-bot.git
 cd qq-monitor-bot
 cp .env.example .env
-nano .env
+docker compose up -d --build
+docker compose logs -f napcat
 ```
 
-按 NapCat 的配置修改：
-
-```dotenv
-ONEBOT_WS_URL=ws://NapCat所在主机:3001
-ONEBOT_ACCESS_TOKEN=与NapCat相同的令牌
-```
-
-如果机器人运行在 Docker 中，而 NapCat 运行在同一台 Linux 主机上，地址中的 `127.0.0.1` 应改成 `host.docker.internal`：
-
-```dotenv
-ONEBOT_WS_URL=ws://host.docker.internal:3001
-```
-
-## 3. Docker 启动
+NapCat WebUI 只监听服务器本机的 `6099` 端口。在自己的电脑上建立 SSH 隧道：
 
 ```bash
-docker compose up -d --build
-docker compose logs -f
+ssh -L 6099:127.0.0.1:6099 root@服务器IP
 ```
+
+然后浏览器打开 `http://127.0.0.1:6099/webui`。默认登录 Token 为 `napcat`，登录后应立即修改。
+
+## 2. 登录 QQ 并配置 OneBot
+
+1. 在 NapCat WebUI 中扫码登录 QQ 小号。
+2. 新建 OneBot 11 WebSocket 服务器，监听地址设为 `0.0.0.0`，端口设为 `3001`。
+3. 如果设置 Access Token，把相同值写入项目 `.env` 的 `ONEBOT_ACCESS_TOKEN`。
+4. 保存并重启 NapCat，然后查看机器人日志。
+
+```bash
+docker compose restart napcat monitor-bot
+docker compose logs -f monitor-bot
+```
+
+日志显示 `已连接 OneBot: ws://napcat:3001` 后，在 QQ 群发送精确指令 `查监控`。
 
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `ONEBOT_WS_URL` | `ws://127.0.0.1:3001` | OneBot WebSocket 地址 |
 | `ONEBOT_ACCESS_TOKEN` | 空 | OneBot 访问令牌 |
 | `COMMAND` | `查监控` | 精确匹配的群指令 |
 | `SCREENSHOT_DELAY_MS` | `3000` | 页面打开后的等待时间 |
