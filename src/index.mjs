@@ -4,7 +4,7 @@ import { chromium } from 'playwright'
 import WebSocket from 'ws'
 
 const monitorUrl = 'https://status.yyapi.cloud/status/ai-status'
-const statusPageMessage = '云影公开渠道状态页：https://speed.xiaoyiapi.xyz/service-status'
+const statusPageMessage = '云影公开渠道状态页：https://status.yyapi.cloud/status/ai-status'
 const onebotUrl = process.env.ONEBOT_WS_URL || 'ws://127.0.0.1:3001'
 const command = process.env.COMMAND || '查监控'
 const delayMs = Number(process.env.SCREENSHOT_DELAY_MS || 3000)

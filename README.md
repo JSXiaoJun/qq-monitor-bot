@@ -1,6 +1,6 @@
 # QQ 群监控截图机器人
 
-群成员发送精确指令 `查监控` 后，机器人先发送公开状态页地址 `https://speed.xiaoyiapi.xyz/service-status`，再打开固定页面 `https://status.yyapi.cloud/status/ai-status` 截图并发回原群。服务通过 OneBot 11 WebSocket 与 NapCatQQ 等 QQ 机器人框架通信。
+群成员发送精确指令 `查监控` 后，机器人先发送公开状态页地址 `https://status.yyapi.cloud/status/ai-status`，再打开该固定页面截图并发回原群。服务通过 OneBot 11 WebSocket 与 NapCatQQ 等 QQ 机器人框架通信。
 
 ## 1. Linux Docker 部署
 
