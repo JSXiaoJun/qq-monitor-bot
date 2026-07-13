@@ -1,8 +1,27 @@
 services:
+  napcat-config:
+    image: mlikiowa/napcat-docker:latest
+    container_name: qq-monitor-napcat-config
+    restart: 'no'
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        if [ -n "$$ACCOUNT" ]; then
+          cp /app/templates/ws.json "/config/onebot11_$${ACCOUNT}.json"
+        fi
+    environment:
+      ACCOUNT: '${NAPCAT_ACCOUNT:-}'
+    volumes:
+      - ./data/napcat/config:/config
+
   napcat:
     image: mlikiowa/napcat-docker:latest
     container_name: qq-monitor-napcat
     restart: unless-stopped
+    depends_on:
+      napcat-config:
+        condition: service_completed_successfully
     environment:
       NAPCAT_UID: '${NAPCAT_UID:-0}'
       NAPCAT_GID: '${NAPCAT_GID:-0}'
