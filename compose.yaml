@@ -6,6 +6,8 @@ services:
     environment:
       NAPCAT_UID: '${NAPCAT_UID:-0}'
       NAPCAT_GID: '${NAPCAT_GID:-0}'
+      ACCOUNT: '${NAPCAT_ACCOUNT:-}'
+      MODE: ws
     ports:
       - '127.0.0.1:6099:6099'
     volumes:

@@ -10,6 +10,7 @@
 git clone https://github.com/JSXiaoJun/qq-monitor-bot.git
 cd qq-monitor-bot
 cp .env.example .env
+sed -i 's/^NAPCAT_ACCOUNT=$/NAPCAT_ACCOUNT=你的机器人QQ号/' .env
 docker compose up -d --build
 docker compose logs -f napcat
 ```
@@ -24,10 +25,10 @@ ssh -L 6099:127.0.0.1:6099 root@服务器IP
 
 ## 2. 登录 QQ 并配置 OneBot
 
-1. 在 NapCat WebUI 中扫码登录 QQ 小号。
-2. 新建 OneBot 11 WebSocket 服务器，监听地址设为 `0.0.0.0`，端口设为 `3001`。
-3. 如果设置 Access Token，把相同值写入项目 `.env` 的 `ONEBOT_ACCESS_TOKEN`。
-4. 保存并重启 NapCat，然后查看机器人日志。
+1. 首次启动时扫描 NapCat 日志中的二维码登录 QQ 小号。
+2. `NAPCAT_ACCOUNT` 会在后续启动时使用持久化凭据快速登录。
+3. Compose 自动创建监听 `0.0.0.0:3001` 的 OneBot 11 WebSocket 服务。
+4. 如需设置 Access Token，同时配置 NapCat 和项目 `.env` 中的 `ONEBOT_ACCESS_TOKEN`。
 
 ```bash
 docker compose restart napcat monitor-bot
