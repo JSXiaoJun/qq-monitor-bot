@@ -12,6 +12,11 @@ services:
       - ./data/napcat/config:/app/napcat/config
       - ./data/napcat/qq:/app/.config/QQ
       - ./data/napcat/plugins:/app/napcat/plugins
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
 
   monitor-bot:
     build: .
@@ -28,3 +33,8 @@ services:
       VIEWPORT_WIDTH: '${VIEWPORT_WIDTH:-1440}'
       VIEWPORT_HEIGHT: '${VIEWPORT_HEIGHT:-900}'
       TZ: Asia/Shanghai
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
