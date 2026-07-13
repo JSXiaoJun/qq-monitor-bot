@@ -3,18 +3,13 @@ import process from 'node:process'
 import { chromium } from 'playwright'
 import WebSocket from 'ws'
 
-const monitorUrl = process.env.MONITOR_URL
+const monitorUrl = 'https://status.yyapi.cloud/status/ai-status'
 const onebotUrl = process.env.ONEBOT_WS_URL || 'ws://127.0.0.1:3001'
 const command = process.env.COMMAND || '查监控'
 const delayMs = Number(process.env.SCREENSHOT_DELAY_MS || 3000)
 const viewport = {
   width: Number(process.env.VIEWPORT_WIDTH || 1440),
   height: Number(process.env.VIEWPORT_HEIGHT || 900),
-}
-
-if (!monitorUrl) {
-  console.error('缺少 MONITOR_URL 环境变量')
-  process.exit(1)
 }
 
 const browser = await chromium.launch({ headless: true })

@@ -1,6 +1,6 @@
 # QQ 群监控截图机器人
 
-群成员发送精确指令 `查监控` 后，机器人打开固定页面、截图并发回原群。服务通过 OneBot 11 WebSocket 与 NapCatQQ 等 QQ 机器人框架通信。
+群成员发送精确指令 `查监控` 后，机器人打开固定页面 `https://status.yyapi.cloud/status/ai-status`、截图并发回原群。服务通过 OneBot 11 WebSocket 与 NapCatQQ 等 QQ 机器人框架通信。
 
 ## 1. 配置 OneBot
 
@@ -14,18 +14,16 @@ cp .env.example .env
 nano .env
 ```
 
-至少修改：
+按 NapCat 的配置修改：
 
 ```dotenv
-MONITOR_URL=http://你的页面地址
 ONEBOT_WS_URL=ws://NapCat所在主机:3001
 ONEBOT_ACCESS_TOKEN=与NapCat相同的令牌
 ```
 
-如果机器人运行在 Docker 中，而页面或 NapCat 运行在同一台 Linux 主机上，地址中的 `127.0.0.1` 应改成 `host.docker.internal`：
+如果机器人运行在 Docker 中，而 NapCat 运行在同一台 Linux 主机上，地址中的 `127.0.0.1` 应改成 `host.docker.internal`：
 
 ```dotenv
-MONITOR_URL=http://host.docker.internal:8080/monitor
 ONEBOT_WS_URL=ws://host.docker.internal:3001
 ```
 
@@ -40,7 +38,6 @@ docker compose logs -f
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `MONITOR_URL` | 无 | 必填，固定截图页面 |
 | `ONEBOT_WS_URL` | `ws://127.0.0.1:3001` | OneBot WebSocket 地址 |
 | `ONEBOT_ACCESS_TOKEN` | 空 | OneBot 访问令牌 |
 | `COMMAND` | `查监控` | 精确匹配的群指令 |
