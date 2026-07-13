@@ -33,7 +33,14 @@ const sendGroupMessage = (groupId, message) => {
 }
 
 const capture = async () => {
-  const page = await browser.newPage({ viewport })
+  const page = await browser.newPage({
+    viewport,
+    locale: 'zh-CN',
+    timezoneId: 'Asia/Shanghai',
+    extraHTTPHeaders: {
+      'Accept-Language': 'zh-CN,zh;q=0.9',
+    },
+  })
 
   try {
     await page.goto(monitorUrl, {
