@@ -1,0 +1,86 @@
+import assert from 'node:assert/strict'
+import http from 'node:http'
+import test from 'node:test'
+import { createNotificationServer, isAllowedQueryCommand } from '../src/notification-api.mjs'
+
+const requestJson = (port, { path = '/api/notify', token = '', body } = {}) => new Promise((resolve, reject) => {
+  const data = body === undefined ? null : Buffer.from(JSON.stringify(body))
+  const request = http.request({
+    host: '127.0.0.1',
+    port,
+    path,
+    method: data ? 'POST' : 'GET',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(data ? { 'Content-Type': 'application/json', 'Content-Length': data.length } : {}),
+    },
+  }, (response) => {
+    const chunks = []
+    response.on('data', (chunk) => chunks.push(chunk))
+    response.on('end', () => resolve({
+      status: response.statusCode,
+      body: JSON.parse(Buffer.concat(chunks).toString('utf8')),
+    }))
+  })
+  request.on('error', reject)
+  if (data) request.write(data)
+  request.end()
+})
+
+const listen = (server) => new Promise((resolve) => {
+  server.listen(0, '127.0.0.1', () => resolve(server.address().port))
+})
+
+const close = (server) => new Promise((resolve) => server.close(resolve))
+
+test('notification API authenticates and sends only to configured group', async () => {
+  const sent = []
+  const server = createNotificationServer({
+    apiToken: 'test-token',
+    notificationGroupId: '123456789',
+    isOneBotConnected: () => true,
+    sendGroupMessage: async (groupId, message) => {
+      sent.push({ groupId, message })
+      return { message_id: 42 }
+    },
+    logger: { log() {}, error() {} },
+  })
+  const port = await listen(server)
+
+  try {
+    const unauthorized = await requestJson(port, { body: { message: 'test' } })
+    assert.equal(unauthorized.status, 401)
+
+    const wrongGroup = await requestJson(port, {
+      token: 'test-token',
+      body: { group_id: '987654321', message: 'test' },
+    })
+    assert.equal(wrongGroup.status, 403)
+
+    const success = await requestJson(port, {
+      token: 'test-token',
+      body: { group_id: '123456789', subject: '倍率变化', message: 'default 1 -> 1.2' },
+    })
+    assert.equal(success.status, 200)
+    assert.equal(success.body.message_id, 42)
+    assert.deepEqual(sent, [{
+      groupId: '123456789',
+      message: '【倍率变化】\ndefault 1 -> 1.2',
+    }])
+  } finally {
+    await close(server)
+  }
+})
+
+test('query command is accepted only from the configured group', () => {
+  const baseEvent = {
+    post_type: 'message',
+    message_type: 'group',
+    group_id: 123456789,
+    raw_message: ' 查监控 ',
+  }
+  assert.equal(isAllowedQueryCommand(baseEvent, '123456789', '查监控'), true)
+  assert.equal(isAllowedQueryCommand({ ...baseEvent, group_id: 987654321 }, '123456789', '查监控'), false)
+  assert.equal(isAllowedQueryCommand(baseEvent, '', '查监控'), false)
+  assert.equal(isAllowedQueryCommand({ ...baseEvent, raw_message: '查余额' }, '123456789', '查监控'), false)
+})

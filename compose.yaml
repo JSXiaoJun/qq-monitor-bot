@@ -49,13 +49,28 @@ services:
       ONEBOT_WS_URL: ws://napcat:3001
       ONEBOT_ACCESS_TOKEN: '${ONEBOT_ACCESS_TOKEN:-}'
       COMMAND: '${COMMAND:-查监控}'
+      QUERY_GROUP_ID: '${QUERY_GROUP_ID:-}'
+      NOTIFY_GROUP_ID: '${NOTIFY_GROUP_ID:-}'
+      NOTIFY_API_TOKEN: '${NOTIFY_API_TOKEN:-}'
+      NOTIFY_HOST: 0.0.0.0
+      NOTIFY_PORT: 3100
       SCREENSHOT_DELAY_MS: '${SCREENSHOT_DELAY_MS:-3000}'
       SCREENSHOT_FULL_PAGE: '${SCREENSHOT_FULL_PAGE:-false}'
       VIEWPORT_WIDTH: '${VIEWPORT_WIDTH:-1440}'
       VIEWPORT_HEIGHT: '${VIEWPORT_HEIGHT:-900}'
       TZ: Asia/Shanghai
+    expose:
+      - '3100'
+    networks:
+      - default
+      - qq-notify
     logging:
       driver: json-file
       options:
         max-size: '10m'
         max-file: '3'
+
+networks:
+  qq-notify:
+    external: true
+    name: qq-notify

@@ -2,11 +2,17 @@ import 'dotenv/config'
 import process from 'node:process'
 import { chromium } from 'playwright'
 import WebSocket from 'ws'
+import { createNotificationServer, isAllowedQueryCommand, normalizeGroupId } from './notification-api.mjs'
 
 const monitorUrl = 'https://status.yyapi.cloud/status/ai-status'
 const statusPageMessage = '云影公开渠道状态页：https://status.yyapi.cloud/status/ai-status'
 const onebotUrl = process.env.ONEBOT_WS_URL || 'ws://127.0.0.1:3001'
 const command = process.env.COMMAND || '查监控'
+const queryGroupId = normalizeGroupId(process.env.QUERY_GROUP_ID)
+const notificationGroupId = normalizeGroupId(process.env.NOTIFY_GROUP_ID)
+const notifyApiToken = String(process.env.NOTIFY_API_TOKEN || '').trim()
+const notifyHost = process.env.NOTIFY_HOST || '0.0.0.0'
+const notifyPort = Number(process.env.NOTIFY_PORT || 3100)
 const delayMs = Number(process.env.SCREENSHOT_DELAY_MS || 3000)
 const viewport = {
   width: Number(process.env.VIEWPORT_WIDTH || 1440),
@@ -19,17 +25,57 @@ let queue = Promise.resolve()
 let ws
 let reconnectTimer
 let stopping = false
+let echoSequence = 0
+const pendingActions = new Map()
 
 const sendGroupMessage = (groupId, message) => {
   if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error('OneBot WebSocket 未连接')
+  const normalizedGroupId = normalizeGroupId(groupId)
+  if (!normalizedGroupId) throw new Error('QQ群号格式无效')
 
-  ws.send(JSON.stringify({
-    action: 'send_group_msg',
-    params: {
-      group_id: groupId,
-      message,
-    },
-  }))
+  const echo = `send-group-${Date.now()}-${echoSequence += 1}`
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pendingActions.delete(echo)
+      reject(new Error('OneBot 发送响应超时'))
+    }, 15000)
+
+    pendingActions.set(echo, { resolve, reject, timeout })
+    ws.send(JSON.stringify({
+      action: 'send_group_msg',
+      params: {
+        group_id: Number(normalizedGroupId),
+        message,
+      },
+      echo,
+    }), (error) => {
+      if (!error) return
+      clearTimeout(timeout)
+      pendingActions.delete(echo)
+      reject(error)
+    })
+  })
+}
+
+const settleOneBotAction = (payload) => {
+  if (!payload?.echo || !pendingActions.has(payload.echo)) return false
+  const pending = pendingActions.get(payload.echo)
+  pendingActions.delete(payload.echo)
+  clearTimeout(pending.timeout)
+  if (payload.status === 'ok' && Number(payload.retcode || 0) === 0) {
+    pending.resolve(payload.data || {})
+  } else {
+    pending.reject(new Error(payload.message || payload.wording || `OneBot retcode=${payload.retcode}`))
+  }
+  return true
+}
+
+const rejectPendingActions = (message) => {
+  for (const pending of pendingActions.values()) {
+    clearTimeout(pending.timeout)
+    pending.reject(new Error(message))
+  }
+  pendingActions.clear()
 }
 
 const capture = async () => {
@@ -58,8 +104,7 @@ const capture = async () => {
 }
 
 const handleMessage = (event) => {
-  if (event.post_type !== 'message' || event.message_type !== 'group') return
-  if (event.raw_message?.trim() !== command) return
+  if (!isAllowedQueryCommand(event, queryGroupId, command)) return
   if (seenMessages.has(event.message_id)) return
 
   seenMessages.add(event.message_id)
@@ -69,8 +114,8 @@ const handleMessage = (event) => {
     .then(async () => {
       console.log(`收到群 ${event.group_id} 的截图请求`)
       const image = await capture()
-      sendGroupMessage(event.group_id, statusPageMessage)
-      sendGroupMessage(event.group_id, [{
+      await sendGroupMessage(queryGroupId, statusPageMessage)
+      await sendGroupMessage(queryGroupId, [{
         type: 'image',
         data: {
           file: `base64://${image.toString('base64')}`,
@@ -79,11 +124,11 @@ const handleMessage = (event) => {
     })
     .catch((err) => {
       console.error('截图或发送失败:', err)
-      try {
-        sendGroupMessage(event.group_id, '截图失败，请稍后重试')
-      } catch (sendErr) {
+      Promise.resolve()
+        .then(() => sendGroupMessage(queryGroupId, '截图失败，请稍后重试'))
+        .catch((sendErr) => {
         console.error('发送失败提示时出错:', sendErr)
-      }
+        })
     })
 }
 
@@ -100,7 +145,8 @@ const connect = () => {
 
   ws.on('message', (data) => {
     try {
-      handleMessage(JSON.parse(data.toString()))
+      const payload = JSON.parse(data.toString())
+      if (!settleOneBotAction(payload)) handleMessage(payload)
     } catch (err) {
       console.warn('忽略无法解析的 OneBot 消息:', err.message)
     }
@@ -111,6 +157,7 @@ const connect = () => {
   })
 
   ws.on('close', () => {
+    rejectPendingActions('OneBot WebSocket 已断开')
     if (stopping) return
     console.warn('OneBot 连接已断开，5 秒后重连')
     clearTimeout(reconnectTimer)
@@ -118,10 +165,29 @@ const connect = () => {
   })
 }
 
+if (!queryGroupId) {
+  console.warn('QUERY_GROUP_ID 未配置，“查监控”指令已禁用')
+}
+
+const notificationServer = createNotificationServer({
+  apiToken: notifyApiToken,
+  notificationGroupId,
+  isOneBotConnected: () => ws?.readyState === WebSocket.OPEN,
+  sendGroupMessage,
+})
+
+notificationServer.listen(notifyPort, notifyHost, () => {
+  console.log(`通知接口监听 http://${notifyHost}:${notifyPort}`)
+  if (!notifyApiToken) console.warn('NOTIFY_API_TOKEN 未配置，通知接口将拒绝所有请求')
+  if (!notificationGroupId) console.warn('NOTIFY_GROUP_ID 未配置，QQ通知已禁用')
+})
+
 const shutdown = async () => {
   stopping = true
   clearTimeout(reconnectTimer)
   ws?.close()
+  rejectPendingActions('机器人正在停止')
+  await new Promise((resolve) => notificationServer.close(resolve))
   await queue.catch(() => {})
   await browser.close()
   process.exit(0)
