@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import http from 'node:http'
 import test from 'node:test'
-import { createNotificationServer, isAllowedQueryCommand } from '../src/notification-api.mjs'
+import {
+  createNotificationServer,
+  formatBalanceMessage,
+  isAllowedGroupCommand,
+  isAllowedQueryCommand,
+} from '../src/notification-api.mjs'
 
 const requestJson = (port, { path = '/api/notify', token = '', body } = {}) => new Promise((resolve, reject) => {
   const data = body === undefined ? null : Buffer.from(JSON.stringify(body))
@@ -83,4 +88,28 @@ test('query command is accepted only from the configured group', () => {
   assert.equal(isAllowedQueryCommand({ ...baseEvent, group_id: 987654321 }, '123456789', '查监控'), false)
   assert.equal(isAllowedQueryCommand(baseEvent, '', '查监控'), false)
   assert.equal(isAllowedQueryCommand({ ...baseEvent, raw_message: '查余额' }, '123456789', '查监控'), false)
+})
+
+test('balance command is accepted only from notification group', () => {
+  const event = {
+    post_type: 'message',
+    message_type: 'group',
+    group_id: 987654321,
+    raw_message: '查余额',
+  }
+  assert.equal(isAllowedGroupCommand(event, '987654321', '查余额'), true)
+  assert.equal(isAllowedGroupCommand(event, '123456789', '查余额'), false)
+})
+
+test('balance message formats every site on its own line', () => {
+  assert.equal(formatBalanceMessage([
+    { name: '超哥', current_balance: 109.58, balance_currency: 'USD' },
+    { name: '聪明', current_balance: 143.75, balance_currency: 'USD' },
+    { name: '刀哥', current_balance: null, balance_currency: 'USD' },
+  ]), [
+    '【当前余额】',
+    '超哥：$109.58',
+    '聪明：$143.75',
+    '刀哥：暂无数据',
+  ].join('\n'))
 })

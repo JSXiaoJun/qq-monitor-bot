@@ -9,11 +9,33 @@ export const normalizeGroupId = (value) => {
   return /^\d{5,20}$/.test(text) ? text : ''
 }
 
-export const isAllowedQueryCommand = (event, queryGroupId, command) => event?.post_type === 'message'
+export const isAllowedGroupCommand = (event, groupId, command) => event?.post_type === 'message'
   && event?.message_type === 'group'
-  && Boolean(queryGroupId)
-  && String(event.group_id) === queryGroupId
+  && Boolean(groupId)
+  && String(event.group_id) === groupId
   && event.raw_message?.trim() === command
+
+export const isAllowedQueryCommand = isAllowedGroupCommand
+
+export const formatBalanceMessage = (sites) => {
+  const lines = ['【当前余额】']
+  if (!Array.isArray(sites) || sites.length === 0) {
+    lines.push('暂无站点')
+    return lines.join('\n')
+  }
+
+  for (const site of sites) {
+    const name = String(site?.name || '未命名站点').trim()
+    const balance = Number(site?.current_balance)
+    const currency = String(site?.balance_currency || 'USD').trim().toUpperCase()
+    let value = '暂无数据'
+    if (site?.current_balance !== null && site?.current_balance !== undefined && Number.isFinite(balance)) {
+      value = currency === 'USD' ? `$${balance.toFixed(2)}` : `${currency} ${balance.toFixed(2)}`
+    }
+    lines.push(`${name}：${value}`)
+  }
+  return lines.join('\n')
+}
 
 const tokensMatch = (expected, actual) => {
   const expectedBuffer = Buffer.from(expected || '')

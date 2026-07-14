@@ -51,6 +51,16 @@ NOTIFY_API_TOKEN=强随机Token
 
 查询群和通知群可以相同，也可以不同。日志显示 `已连接 OneBot: ws://napcat:3001` 后，只在 `QUERY_GROUP_ID` 对应群发送精确指令 `查监控` 才会触发截图。
 
+在 `NOTIFY_GROUP_ID` 对应的通知群发送精确指令 `查余额`，机器人会通过共享 Docker 网络读取监控面板已经采集的全部站点余额，并回复：
+
+```text
+【当前余额】
+站点A：$12.34
+站点B：$56.78
+```
+
+余额查询不会主动检测上游，返回的是监控面板最近一次保存的余额。
+
 通知接口只在共享 Docker 网络中暴露：
 
 ```text
@@ -66,6 +76,8 @@ Authorization: Bearer <NOTIFY_API_TOKEN>
 | --- | --- | --- |
 | `ONEBOT_ACCESS_TOKEN` | 空 | OneBot 访问令牌 |
 | `COMMAND` | `查监控` | 精确匹配的群指令 |
+| `BALANCE_COMMAND` | `查余额` | 通知群内查询全部站点余额的精确指令 |
+| `BALANCE_API_URL` | `http://upstream-ratio-watch:8000/api/bot/balances` | 监控面板内部余额接口 |
 | `QUERY_GROUP_ID` | 空 | 唯一允许触发查询指令的 QQ 群号；未配置时禁用查询 |
 | `NOTIFY_GROUP_ID` | 空 | 上游监控通知固定发送的 QQ 群号 |
 | `NOTIFY_API_TOKEN` | 空 | HTTP 通知接口 Bearer Token；未配置时拒绝请求 |

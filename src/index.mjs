@@ -2,12 +2,20 @@ import 'dotenv/config'
 import process from 'node:process'
 import { chromium } from 'playwright'
 import WebSocket from 'ws'
-import { createNotificationServer, isAllowedQueryCommand, normalizeGroupId } from './notification-api.mjs'
+import {
+  createNotificationServer,
+  formatBalanceMessage,
+  isAllowedGroupCommand,
+  isAllowedQueryCommand,
+  normalizeGroupId,
+} from './notification-api.mjs'
 
 const monitorUrl = 'https://status.yyapi.cloud/status/ai-status'
 const statusPageMessage = '云影公开渠道状态页：https://status.yyapi.cloud/status/ai-status'
 const onebotUrl = process.env.ONEBOT_WS_URL || 'ws://127.0.0.1:3001'
 const command = process.env.COMMAND || '查监控'
+const balanceCommand = process.env.BALANCE_COMMAND || '查余额'
+const balanceApiUrl = process.env.BALANCE_API_URL || 'http://upstream-ratio-watch:8000/api/bot/balances'
 const queryGroupId = normalizeGroupId(process.env.QUERY_GROUP_ID)
 const notificationGroupId = normalizeGroupId(process.env.NOTIFY_GROUP_ID)
 const notifyApiToken = String(process.env.NOTIFY_API_TOKEN || '').trim()
@@ -27,6 +35,14 @@ let reconnectTimer
 let stopping = false
 let echoSequence = 0
 const pendingActions = new Map()
+
+const rememberMessage = (event) => {
+  if (event.message_id === null || event.message_id === undefined) return true
+  if (seenMessages.has(event.message_id)) return false
+  seenMessages.add(event.message_id)
+  if (seenMessages.size > 1000) seenMessages.delete(seenMessages.values().next().value)
+  return true
+}
 
 const sendGroupMessage = (groupId, message) => {
   if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error('OneBot WebSocket 未连接')
@@ -103,12 +119,45 @@ const capture = async () => {
   }
 }
 
-const handleMessage = (event) => {
-  if (!isAllowedQueryCommand(event, queryGroupId, command)) return
-  if (seenMessages.has(event.message_id)) return
+const fetchBalances = async () => {
+  if (!notifyApiToken) throw new Error('NOTIFY_API_TOKEN 未配置')
+  const response = await fetch(balanceApiUrl, {
+    headers: { Authorization: `Bearer ${notifyApiToken}` },
+    signal: AbortSignal.timeout(15000),
+  })
+  const text = await response.text()
+  let payload
+  try {
+    payload = text ? JSON.parse(text) : {}
+  } catch {
+    throw new Error(`余额接口返回无效响应（HTTP ${response.status}）`)
+  }
+  if (!response.ok || !payload?.success || !Array.isArray(payload.data)) {
+    throw new Error(payload?.message || `余额接口请求失败（HTTP ${response.status}）`)
+  }
+  return payload.data
+}
 
-  seenMessages.add(event.message_id)
-  if (seenMessages.size > 1000) seenMessages.delete(seenMessages.values().next().value)
+const handleMessage = (event) => {
+  if (isAllowedGroupCommand(event, notificationGroupId, balanceCommand)) {
+    if (!rememberMessage(event)) return
+    queue = queue
+      .then(async () => {
+        console.log(`收到群 ${event.group_id} 的余额请求`)
+        const sites = await fetchBalances()
+        await sendGroupMessage(notificationGroupId, formatBalanceMessage(sites))
+      })
+      .catch((error) => {
+        console.error('余额查询或发送失败:', error)
+        Promise.resolve()
+          .then(() => sendGroupMessage(notificationGroupId, `余额查询失败：${error.message}`))
+          .catch((sendError) => console.error('发送余额查询失败提示时出错:', sendError))
+      })
+    return
+  }
+
+  if (!isAllowedQueryCommand(event, queryGroupId, command)) return
+  if (!rememberMessage(event)) return
 
   queue = queue
     .then(async () => {
@@ -127,7 +176,7 @@ const handleMessage = (event) => {
       Promise.resolve()
         .then(() => sendGroupMessage(queryGroupId, '截图失败，请稍后重试'))
         .catch((sendErr) => {
-        console.error('发送失败提示时出错:', sendErr)
+          console.error('发送失败提示时出错:', sendErr)
         })
     })
 }
@@ -180,6 +229,7 @@ notificationServer.listen(notifyPort, notifyHost, () => {
   console.log(`通知接口监听 http://${notifyHost}:${notifyPort}`)
   if (!notifyApiToken) console.warn('NOTIFY_API_TOKEN 未配置，通知接口将拒绝所有请求')
   if (!notificationGroupId) console.warn('NOTIFY_GROUP_ID 未配置，QQ通知已禁用')
+  console.log(`余额查询接口: ${balanceApiUrl}`)
 })
 
 const shutdown = async () => {
