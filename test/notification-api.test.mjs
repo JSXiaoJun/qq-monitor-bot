@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   createNotificationServer,
   formatBalanceMessage,
+  formatRatioMessage,
   isAllowedGroupCommand,
   isAllowedQueryCommand,
 } from '../src/notification-api.mjs'
@@ -111,5 +112,28 @@ test('balance message formats every site on its own line', () => {
     '超哥：$109.58',
     '聪明：$143.75',
     '刀哥：暂无数据',
+  ].join('\n'))
+})
+
+test('ratio message groups selected rates by site without losing precision', () => {
+  assert.equal(formatRatioMessage([
+    {
+      name: '超哥',
+      groups: [
+        { name: '分组1', ratio: 0.001, available: true },
+        { name: '分组2', ratio: 0.002, available: true },
+      ],
+    },
+    {
+      name: '聪明',
+      groups: [{ name: '精确分组', ratio: 0.015, available: true }],
+    },
+  ]), [
+    '【当前倍率】',
+    '超哥：',
+    '分组1：0.001',
+    '分组2：0.002',
+    '聪明：',
+    '精确分组：0.015',
   ].join('\n'))
 })

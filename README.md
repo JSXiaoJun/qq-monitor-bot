@@ -61,6 +61,19 @@ NOTIFY_API_TOKEN=强随机Token
 
 余额查询不会主动检测上游，返回的是监控面板最近一次保存的余额。
 
+在通知群发送精确指令 `查倍率`，机器人会立即并行检测全部启用站点，并按各站点在监控面板勾选的“变化通知分组”回复：
+
+```text
+【当前倍率】
+站点A：
+分组1：0.001
+分组2：0.002
+站点B：
+分组3：0.015
+```
+
+实时检测可能同时触发正常的倍率变化通知；根据站点响应速度，汇总结果可能需要等待几十秒。
+
 通知接口只在共享 Docker 网络中暴露：
 
 ```text
@@ -78,6 +91,8 @@ Authorization: Bearer <NOTIFY_API_TOKEN>
 | `COMMAND` | `查监控` | 精确匹配的群指令 |
 | `BALANCE_COMMAND` | `查余额` | 通知群内查询全部站点余额的精确指令 |
 | `BALANCE_API_URL` | `http://upstream-ratio-watch:8000/api/bot/balances` | 监控面板内部余额接口 |
+| `RATIO_COMMAND` | `查倍率` | 通知群内实时检测已选分组倍率的精确指令 |
+| `RATIO_API_URL` | `http://upstream-ratio-watch:8000/api/bot/ratios` | 监控面板实时倍率接口 |
 | `QUERY_GROUP_ID` | 空 | 唯一允许触发查询指令的 QQ 群号；未配置时禁用查询 |
 | `NOTIFY_GROUP_ID` | 空 | 上游监控通知固定发送的 QQ 群号 |
 | `NOTIFY_API_TOKEN` | 空 | HTTP 通知接口 Bearer Token；未配置时拒绝请求 |

@@ -5,6 +5,7 @@ import WebSocket from 'ws'
 import {
   createNotificationServer,
   formatBalanceMessage,
+  formatRatioMessage,
   isAllowedGroupCommand,
   isAllowedQueryCommand,
   normalizeGroupId,
@@ -16,6 +17,8 @@ const onebotUrl = process.env.ONEBOT_WS_URL || 'ws://127.0.0.1:3001'
 const command = process.env.COMMAND || '查监控'
 const balanceCommand = process.env.BALANCE_COMMAND || '查余额'
 const balanceApiUrl = process.env.BALANCE_API_URL || 'http://upstream-ratio-watch:8000/api/bot/balances'
+const ratioCommand = process.env.RATIO_COMMAND || '查倍率'
+const ratioApiUrl = process.env.RATIO_API_URL || 'http://upstream-ratio-watch:8000/api/bot/ratios'
 const queryGroupId = normalizeGroupId(process.env.QUERY_GROUP_ID)
 const notificationGroupId = normalizeGroupId(process.env.NOTIFY_GROUP_ID)
 const notifyApiToken = String(process.env.NOTIFY_API_TOKEN || '').trim()
@@ -119,26 +122,48 @@ const capture = async () => {
   }
 }
 
-const fetchBalances = async () => {
+const fetchMonitorData = async (url, { method = 'GET', timeoutMs = 15000 } = {}) => {
   if (!notifyApiToken) throw new Error('NOTIFY_API_TOKEN 未配置')
-  const response = await fetch(balanceApiUrl, {
+  const response = await fetch(url, {
+    method,
     headers: { Authorization: `Bearer ${notifyApiToken}` },
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(timeoutMs),
   })
   const text = await response.text()
   let payload
   try {
     payload = text ? JSON.parse(text) : {}
   } catch {
-    throw new Error(`余额接口返回无效响应（HTTP ${response.status}）`)
+    throw new Error(`监控接口返回无效响应（HTTP ${response.status}）`)
   }
   if (!response.ok || !payload?.success || !Array.isArray(payload.data)) {
-    throw new Error(payload?.message || `余额接口请求失败（HTTP ${response.status}）`)
+    throw new Error(payload?.message || `监控接口请求失败（HTTP ${response.status}）`)
   }
   return payload.data
 }
 
+const fetchBalances = () => fetchMonitorData(balanceApiUrl)
+
+const fetchRatios = () => fetchMonitorData(ratioApiUrl, { method: 'POST', timeoutMs: 120000 })
+
 const handleMessage = (event) => {
+  if (isAllowedGroupCommand(event, notificationGroupId, ratioCommand)) {
+    if (!rememberMessage(event)) return
+    queue = queue
+      .then(async () => {
+        console.log(`收到群 ${event.group_id} 的实时倍率请求`)
+        const sites = await fetchRatios()
+        await sendGroupMessage(notificationGroupId, formatRatioMessage(sites))
+      })
+      .catch((error) => {
+        console.error('倍率查询或发送失败:', error)
+        Promise.resolve()
+          .then(() => sendGroupMessage(notificationGroupId, `倍率查询失败：${error.message}`))
+          .catch((sendError) => console.error('发送倍率查询失败提示时出错:', sendError))
+      })
+    return
+  }
+
   if (isAllowedGroupCommand(event, notificationGroupId, balanceCommand)) {
     if (!rememberMessage(event)) return
     queue = queue
@@ -230,6 +255,7 @@ notificationServer.listen(notifyPort, notifyHost, () => {
   if (!notifyApiToken) console.warn('NOTIFY_API_TOKEN 未配置，通知接口将拒绝所有请求')
   if (!notificationGroupId) console.warn('NOTIFY_GROUP_ID 未配置，QQ通知已禁用')
   console.log(`余额查询接口: ${balanceApiUrl}`)
+  console.log(`实时倍率接口: ${ratioApiUrl}`)
 })
 
 const shutdown = async () => {

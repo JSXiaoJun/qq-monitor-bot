@@ -51,6 +51,8 @@ services:
       COMMAND: '${COMMAND:-查监控}'
       BALANCE_COMMAND: '${BALANCE_COMMAND:-查余额}'
       BALANCE_API_URL: '${BALANCE_API_URL:-http://upstream-ratio-watch:8000/api/bot/balances}'
+      RATIO_COMMAND: '${RATIO_COMMAND:-查倍率}'
+      RATIO_API_URL: '${RATIO_API_URL:-http://upstream-ratio-watch:8000/api/bot/ratios}'
       QUERY_GROUP_ID: '${QUERY_GROUP_ID:-}'
       NOTIFY_GROUP_ID: '${NOTIFY_GROUP_ID:-}'
       NOTIFY_API_TOKEN: '${NOTIFY_API_TOKEN:-}'

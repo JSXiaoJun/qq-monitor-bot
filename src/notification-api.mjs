@@ -37,6 +37,34 @@ export const formatBalanceMessage = (sites) => {
   return lines.join('\n')
 }
 
+const formatRatioValue = (value) => {
+  const ratio = Number(value)
+  if (!Number.isFinite(ratio)) return '暂无数据'
+  const text = ratio.toFixed(8).replace(/0+$/, '').replace(/\.$/, '')
+  return text || '0'
+}
+
+export const formatRatioMessage = (sites) => {
+  const lines = ['【当前倍率】']
+  if (!Array.isArray(sites) || sites.length === 0) {
+    lines.push('暂无启用站点')
+    return lines.join('\n')
+  }
+
+  for (const site of sites) {
+    lines.push(`${String(site?.name || '未命名站点').trim()}：`)
+    if (!Array.isArray(site?.groups) || site.groups.length === 0) {
+      lines.push(site?.error ? `检测失败：${site.error}` : '暂无已选分组')
+      continue
+    }
+    for (const group of site.groups) {
+      const value = group?.available === false ? '暂无数据' : formatRatioValue(group?.ratio)
+      lines.push(`${String(group?.name || '未命名分组').trim()}：${value}`)
+    }
+  }
+  return lines.join('\n')
+}
+
 const tokensMatch = (expected, actual) => {
   const expectedBuffer = Buffer.from(expected || '')
   const actualBuffer = Buffer.from(actual || '')
