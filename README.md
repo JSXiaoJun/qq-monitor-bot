@@ -74,6 +74,29 @@ NOTIFY_API_TOKEN=强随机Token
 
 实时检测可能同时触发正常的倍率变化通知；根据站点响应速度，汇总结果可能需要等待几十秒。
 
+在通知群发送精确指令 `查利润`，机器人会实时获取所有启用上游的今日消耗，同时查询本站 NewAPI 的今日总消耗，然后回复：
+
+```text
+【利润】
+站点A：123.11
+站点B：11.12
+上游总和：134.23
+本站消耗：200.00
+利润：65.77
+```
+
+利润等于“本站消耗 - 上游总和”，所有金额保留两位小数。为避免成本漏算，只要任一启用上游查询失败，机器人就会回复失败原因而不会发送不完整的利润。上游站点需在 `upstream-ratio-watch` 中启用登录检测并配置有效凭据。
+
+本站 NewAPI 需配置管理员或超级管理员的系统访问令牌（不是 `sk-` API 令牌）及对应用户 ID：
+
+```dotenv
+NEWAPI_BASE_URL=https://api.example.com
+NEWAPI_ACCESS_TOKEN=系统访问令牌
+NEWAPI_USER_ID=1
+```
+
+机器人调用本站 NewAPI 的 `/api/log/stat` 获取当天全部用户的消耗，并从 `/api/status` 自动读取 `quota_per_unit`。无法读取时使用 `NEWAPI_QUOTA_PER_UNIT`，默认值为 `500000`。
+
 通知接口只在共享 Docker 网络中暴露：
 
 ```text
@@ -93,6 +116,13 @@ Authorization: Bearer <NOTIFY_API_TOKEN>
 | `BALANCE_API_URL` | `http://upstream-ratio-watch:8000/api/bot/balances` | 监控面板内部余额接口 |
 | `RATIO_COMMAND` | `查倍率` | 通知群内实时检测已选分组倍率的精确指令 |
 | `RATIO_API_URL` | `http://upstream-ratio-watch:8000/api/bot/ratios` | 监控面板实时倍率接口 |
+| `PROFIT_COMMAND` | `查利润` | 通知群内查询今日利润的精确指令 |
+| `USAGE_API_URL` | `http://upstream-ratio-watch:8000/api/bot/usages/today` | 监控面板实时查询上游今日消耗的接口 |
+| `NEWAPI_BASE_URL` | 空 | 本站 NewAPI 地址 |
+| `NEWAPI_ACCESS_TOKEN` | 空 | 本站 NewAPI 管理员/超级管理员系统访问令牌 |
+| `NEWAPI_USER_ID` | 空 | 上述系统访问令牌所属的用户 ID |
+| `NEWAPI_QUOTA_PER_UNIT` | `500000` | 无法自动检测时的 NewAPI 金额换算基数 |
+| `PROFIT_TIMEZONE` | `Asia/Shanghai` | 本站今日消耗的日期边界时区 |
 | `QUERY_GROUP_ID` | 空 | 唯一允许触发查询指令的 QQ 群号；未配置时禁用查询 |
 | `NOTIFY_GROUP_ID` | 空 | 上游监控通知固定发送的 QQ 群号 |
 | `NOTIFY_API_TOKEN` | 空 | HTTP 通知接口 Bearer Token；未配置时拒绝请求 |

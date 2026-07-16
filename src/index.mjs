@@ -5,11 +5,13 @@ import WebSocket from 'ws'
 import {
   createNotificationServer,
   formatBalanceMessage,
+  formatProfitMessage,
   formatRatioMessage,
   isAllowedGroupCommand,
   isAllowedQueryCommand,
   normalizeGroupId,
 } from './notification-api.mjs'
+import { fetchNewApiTodayUsage } from './profit-api.mjs'
 
 const monitorUrl = 'https://status.yyapi.cloud/status/ai-status'
 const statusPageMessage = '云影公开渠道状态页：https://status.yyapi.cloud/status/ai-status'
@@ -19,6 +21,13 @@ const balanceCommand = process.env.BALANCE_COMMAND || '查余额'
 const balanceApiUrl = process.env.BALANCE_API_URL || 'http://upstream-ratio-watch:8000/api/bot/balances'
 const ratioCommand = process.env.RATIO_COMMAND || '查倍率'
 const ratioApiUrl = process.env.RATIO_API_URL || 'http://upstream-ratio-watch:8000/api/bot/ratios'
+const profitCommand = process.env.PROFIT_COMMAND || '查利润'
+const usageApiUrl = process.env.USAGE_API_URL || 'http://upstream-ratio-watch:8000/api/bot/usages/today'
+const newApiBaseUrl = process.env.NEWAPI_BASE_URL || ''
+const newApiAccessToken = process.env.NEWAPI_ACCESS_TOKEN || ''
+const newApiUserId = process.env.NEWAPI_USER_ID || ''
+const newApiQuotaPerUnit = Number(process.env.NEWAPI_QUOTA_PER_UNIT || 500000)
+const profitTimezone = process.env.PROFIT_TIMEZONE || 'Asia/Shanghai'
 const queryGroupId = normalizeGroupId(process.env.QUERY_GROUP_ID)
 const notificationGroupId = normalizeGroupId(process.env.NOTIFY_GROUP_ID)
 const notifyApiToken = String(process.env.NOTIFY_API_TOKEN || '').trim()
@@ -146,7 +155,37 @@ const fetchBalances = () => fetchMonitorData(balanceApiUrl)
 
 const fetchRatios = () => fetchMonitorData(ratioApiUrl, { method: 'POST', timeoutMs: 120000 })
 
+const fetchUpstreamTodayUsages = () => fetchMonitorData(usageApiUrl, { method: 'POST', timeoutMs: 120000 })
+
+const fetchLocalTodayUsage = () => fetchNewApiTodayUsage({
+  baseUrl: newApiBaseUrl,
+  accessToken: newApiAccessToken,
+  userId: newApiUserId,
+  quotaPerUnit: newApiQuotaPerUnit,
+  timeZone: profitTimezone,
+})
+
 const handleMessage = (event) => {
+  if (isAllowedGroupCommand(event, notificationGroupId, profitCommand)) {
+    if (!rememberMessage(event)) return
+    queue = queue
+      .then(async () => {
+        console.log(`收到群 ${event.group_id} 的利润查询请求`)
+        const [sites, localUsage] = await Promise.all([
+          fetchUpstreamTodayUsages(),
+          fetchLocalTodayUsage(),
+        ])
+        await sendGroupMessage(notificationGroupId, formatProfitMessage(sites, localUsage))
+      })
+      .catch((error) => {
+        console.error('利润查询或发送失败:', error)
+        Promise.resolve()
+          .then(() => sendGroupMessage(notificationGroupId, `利润查询失败：${error.message}`))
+          .catch((sendError) => console.error('发送利润查询失败提示时出错:', sendError))
+      })
+    return
+  }
+
   if (isAllowedGroupCommand(event, notificationGroupId, ratioCommand)) {
     if (!rememberMessage(event)) return
     queue = queue
@@ -256,6 +295,7 @@ notificationServer.listen(notifyPort, notifyHost, () => {
   if (!notificationGroupId) console.warn('NOTIFY_GROUP_ID 未配置，QQ通知已禁用')
   console.log(`余额查询接口: ${balanceApiUrl}`)
   console.log(`实时倍率接口: ${ratioApiUrl}`)
+  console.log(`上游今日消耗接口: ${usageApiUrl}`)
 })
 
 const shutdown = async () => {

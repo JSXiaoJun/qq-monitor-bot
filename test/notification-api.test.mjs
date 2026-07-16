@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   createNotificationServer,
   formatBalanceMessage,
+  formatProfitMessage,
   formatRatioMessage,
   isAllowedGroupCommand,
   isAllowedQueryCommand,
@@ -136,4 +137,24 @@ test('ratio message groups selected rates by site without losing precision', () 
     '聪明：',
     '精确分组：0.015',
   ].join('\n'))
+})
+
+test('profit message lists upstream usage and calculates totals with two decimals', () => {
+  assert.equal(formatProfitMessage([
+    { name: 'xx', success: true, amount: 123.11 },
+    { name: 'ss', success: true, amount: 11.12 },
+  ], 200), [
+    '【利润】',
+    'xx：123.11',
+    'ss：11.12',
+    '上游总和：134.23',
+    '本站消耗：200.00',
+    '利润：65.77',
+  ].join('\n'))
+})
+
+test('profit message rejects incomplete upstream usage', () => {
+  assert.throws(() => formatProfitMessage([
+    { name: 'xx', success: false, amount: null, error: '登录已过期' },
+  ], 200), /xx（登录已过期）/)
 })

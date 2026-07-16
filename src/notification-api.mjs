@@ -65,6 +65,35 @@ export const formatRatioMessage = (sites) => {
   return lines.join('\n')
 }
 
+export const formatProfitMessage = (sites, localUsage) => {
+  if (!Array.isArray(sites)) throw new Error('上游今日消耗数据格式无效')
+  const failed = sites.filter((site) => site?.success === false)
+  if (failed.length > 0) {
+    const details = failed
+      .map((site) => `${String(site?.name || '未命名站点').trim()}（${site?.error || '查询失败'}）`)
+      .join('、')
+    throw new Error(`上游今日消耗查询不完整：${details}`)
+  }
+
+  const lines = ['【利润】']
+  let upstreamTotal = 0
+  for (const site of sites) {
+    const amount = Number(site?.amount)
+    if (!Number.isFinite(amount)) {
+      throw new Error(`${String(site?.name || '未命名站点').trim()}缺少有效的今日消耗`)
+    }
+    upstreamTotal += amount
+    lines.push(`${String(site?.name || '未命名站点').trim()}：${amount.toFixed(2)}`)
+  }
+
+  const normalizedLocalUsage = Number(localUsage)
+  if (!Number.isFinite(normalizedLocalUsage)) throw new Error('本站今日消耗数据无效')
+  lines.push(`上游总和：${upstreamTotal.toFixed(2)}`)
+  lines.push(`本站消耗：${normalizedLocalUsage.toFixed(2)}`)
+  lines.push(`利润：${(normalizedLocalUsage - upstreamTotal).toFixed(2)}`)
+  return lines.join('\n')
+}
+
 const tokensMatch = (expected, actual) => {
   const expectedBuffer = Buffer.from(expected || '')
   const actualBuffer = Buffer.from(actual || '')
