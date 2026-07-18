@@ -94,6 +94,20 @@ export const formatProfitMessage = (sites, localUsage) => {
   return lines.join('\n')
 }
 
+export const formatRechargeMessage = (stats) => {
+  const totalPaid = Number(stats?.totalPaid)
+  const successfulOrderCount = Number(stats?.successfulOrderCount)
+  if (!Number.isFinite(totalPaid) || totalPaid < 0) throw new Error('实际付款总和无效')
+  if (!Number.isInteger(successfulOrderCount) || successfulOrderCount < 0) {
+    throw new Error('成功充值订单数无效')
+  }
+  return [
+    '【充值统计】',
+    `实际付款总和：¥${totalPaid.toFixed(2)}`,
+    `成功订单数：${successfulOrderCount}`,
+  ].join('\n')
+}
+
 const tokensMatch = (expected, actual) => {
   const expectedBuffer = Buffer.from(expected || '')
   const actualBuffer = Buffer.from(actual || '')

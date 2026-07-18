@@ -7,11 +7,13 @@ import {
   formatBalanceMessage,
   formatProfitMessage,
   formatRatioMessage,
+  formatRechargeMessage,
   isAllowedGroupCommand,
   isAllowedQueryCommand,
   normalizeGroupId,
 } from './notification-api.mjs'
 import { fetchNewApiTodayUsage } from './profit-api.mjs'
+import { fetchNewApiRechargeStats } from './recharge-api.mjs'
 
 const monitorUrl = 'https://status.yyapi.cloud/status/ai-status'
 const statusPageMessage = '云影公开渠道状态页：https://status.yyapi.cloud/status/ai-status'
@@ -22,6 +24,7 @@ const balanceApiUrl = process.env.BALANCE_API_URL || 'http://upstream-ratio-watc
 const ratioCommand = process.env.RATIO_COMMAND || '查倍率'
 const ratioApiUrl = process.env.RATIO_API_URL || 'http://upstream-ratio-watch:8000/api/bot/ratios'
 const profitCommand = process.env.PROFIT_COMMAND || '查利润'
+const rechargeCommand = process.env.RECHARGE_COMMAND || '查充值'
 const usageApiUrl = process.env.USAGE_API_URL || 'http://upstream-ratio-watch:8000/api/bot/usages/today'
 const newApiBaseUrl = process.env.NEWAPI_BASE_URL || ''
 const newApiAccessToken = process.env.NEWAPI_ACCESS_TOKEN || ''
@@ -165,7 +168,30 @@ const fetchLocalTodayUsage = () => fetchNewApiTodayUsage({
   timeZone: profitTimezone,
 })
 
+const fetchRechargeStats = () => fetchNewApiRechargeStats({
+  baseUrl: newApiBaseUrl,
+  accessToken: newApiAccessToken,
+  userId: newApiUserId,
+})
+
 const handleMessage = (event) => {
+  if (isAllowedGroupCommand(event, notificationGroupId, rechargeCommand)) {
+    if (!rememberMessage(event)) return
+    queue = queue
+      .then(async () => {
+        console.log(`收到群 ${event.group_id} 的充值统计请求`)
+        const stats = await fetchRechargeStats()
+        await sendGroupMessage(notificationGroupId, formatRechargeMessage(stats))
+      })
+      .catch((error) => {
+        console.error('充值统计查询或发送失败:', error)
+        Promise.resolve()
+          .then(() => sendGroupMessage(notificationGroupId, `充值查询失败：${error.message}`))
+          .catch((sendError) => console.error('发送充值查询失败提示时出错:', sendError))
+      })
+    return
+  }
+
   if (isAllowedGroupCommand(event, notificationGroupId, profitCommand)) {
     if (!rememberMessage(event)) return
     queue = queue
@@ -296,6 +322,7 @@ notificationServer.listen(notifyPort, notifyHost, () => {
   console.log(`余额查询接口: ${balanceApiUrl}`)
   console.log(`实时倍率接口: ${ratioApiUrl}`)
   console.log(`上游今日消耗接口: ${usageApiUrl}`)
+  console.log(`充值统计指令: ${rechargeCommand}`)
 })
 
 const shutdown = async () => {

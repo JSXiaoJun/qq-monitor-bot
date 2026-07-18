@@ -6,6 +6,7 @@ import {
   formatBalanceMessage,
   formatProfitMessage,
   formatRatioMessage,
+  formatRechargeMessage,
   isAllowedGroupCommand,
   isAllowedQueryCommand,
 } from '../src/notification-api.mjs'
@@ -157,4 +158,15 @@ test('profit message rejects incomplete upstream usage', () => {
   assert.throws(() => formatProfitMessage([
     { name: 'xx', success: false, amount: null, error: '登录已过期' },
   ], 200), /xx（登录已过期）/)
+})
+
+test('recharge message shows actual paid total and successful order count', () => {
+  assert.equal(formatRechargeMessage({
+    totalPaid: 1234.5,
+    successfulOrderCount: 18,
+  }), [
+    '【充值统计】',
+    '实际付款总和：¥1234.50',
+    '成功订单数：18',
+  ].join('\n'))
 })
