@@ -172,6 +172,7 @@ const fetchRechargeStats = () => fetchNewApiRechargeStats({
   baseUrl: newApiBaseUrl,
   accessToken: newApiAccessToken,
   userId: newApiUserId,
+  timeZone: profitTimezone,
 })
 
 const handleMessage = (event) => {

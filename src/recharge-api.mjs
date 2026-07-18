@@ -1,3 +1,5 @@
+import { todayTimestampRange } from './profit-api.mjs'
+
 const PAGE_SIZE = 100
 const MAX_PAGES = 10000
 
@@ -37,10 +39,29 @@ const orderKey = (order) => {
   return tradeNo ? `trade:${tradeNo}` : ''
 }
 
+const completedTimestamp = (order) => {
+  const rawCompleteTime = order?.complete_time
+  const completeTime = Number(rawCompleteTime)
+  const raw = rawCompleteTime !== null
+    && rawCompleteTime !== undefined
+    && String(rawCompleteTime).trim() !== ''
+    && Number.isFinite(completeTime)
+    && completeTime > 0
+    ? rawCompleteTime
+    : order?.create_time
+  const value = Number(raw)
+  if (raw === null || raw === undefined || String(raw).trim() === '' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`充值订单 ${String(order?.trade_no || order?.id)} 的完成时间无效`)
+  }
+  return value > 1e12 ? Math.floor(value / 1000) : Math.floor(value)
+}
+
 export const fetchNewApiRechargeStats = async ({
   baseUrl,
   accessToken,
   userId,
+  timeZone = 'Asia/Shanghai',
+  now = new Date(),
   fetchImpl = fetch,
 }) => {
   const normalizedBaseUrl = String(baseUrl || '').trim().replace(/\/+$/, '')
@@ -55,6 +76,7 @@ export const fetchNewApiRechargeStats = async ({
     'New-Api-User': normalizedUserId,
   }
   const seenOrders = new Set()
+  const { startTimestamp, endTimestamp } = todayTimestampRange(now, timeZone)
   let expectedTotal = null
   let successfulOrderCount = 0
   let totalPaidCents = 0
@@ -81,6 +103,8 @@ export const fetchNewApiRechargeStats = async ({
       seenOrders.add(key)
 
       if (String(order?.status || '').toLowerCase() !== 'success') continue
+      const completedAt = completedTimestamp(order)
+      if (completedAt < startTimestamp || completedAt > endTimestamp) continue
       const rawMoney = order?.money
       const money = Number(rawMoney)
       if (rawMoney === null || rawMoney === undefined || String(rawMoney).trim() === '') {

@@ -97,15 +97,15 @@ NEWAPI_USER_ID=1
 
 机器人调用本站 NewAPI 的 `/api/log/stat` 获取当天全部用户的消耗，并从 `/api/status` 自动读取 `quota_per_unit`。无法读取时使用 `NEWAPI_QUOTA_PER_UNIT`，默认值为 `500000`。
 
-在通知群发送精确指令 `查充值`，机器人会遍历本站 NewAPI 管理员充值订单接口的全部历史分页，只统计状态为 `success` 的订单，并回复实际付款字段 `money` 的总和与成功订单数：
+在通知群发送精确指令 `查充值`，机器人会遍历本站 NewAPI 管理员充值订单接口的全部分页，只统计上海时区当天完成且状态为 `success` 的订单，并回复实际付款字段 `money` 的总和与成功订单数：
 
 ```text
-【充值统计】
-实际付款总和：¥1234.50
-成功订单数：18
+【今日充值】
+今日实际付款总和：¥1234.50
+今日成功订单数：18
 ```
 
-充值统计复用上述本站 NewAPI 管理员凭据，不经过 `upstream-ratio-watch`。待支付、失败和过期订单不会计入结果。
+充值统计复用上述本站 NewAPI 管理员凭据和 `PROFIT_TIMEZONE` 时区，不经过 `upstream-ratio-watch`。待支付、失败、过期以及非当天完成的订单不会计入结果。
 
 通知接口只在共享 Docker 网络中暴露：
 
@@ -127,7 +127,7 @@ Authorization: Bearer <NOTIFY_API_TOKEN>
 | `RATIO_COMMAND` | `查倍率` | 通知群内实时检测已选分组倍率的精确指令 |
 | `RATIO_API_URL` | `http://upstream-ratio-watch:8000/api/bot/ratios` | 监控面板实时倍率接口 |
 | `PROFIT_COMMAND` | `查利润` | 通知群内查询今日利润的精确指令 |
-| `RECHARGE_COMMAND` | `查充值` | 通知群内查询本站 NewAPI 历史成功充值总额与订单数的精确指令 |
+| `RECHARGE_COMMAND` | `查充值` | 通知群内查询本站 NewAPI 今日成功充值总额与订单数的精确指令 |
 | `USAGE_API_URL` | `http://upstream-ratio-watch:8000/api/bot/usages/today` | 监控面板实时查询上游今日消耗的接口 |
 | `NEWAPI_BASE_URL` | 空 | 本站 NewAPI 地址 |
 | `NEWAPI_ACCESS_TOKEN` | 空 | 本站 NewAPI 管理员/超级管理员系统访问令牌 |

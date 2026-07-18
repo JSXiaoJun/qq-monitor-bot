@@ -102,9 +102,9 @@ export const formatRechargeMessage = (stats) => {
     throw new Error('成功充值订单数无效')
   }
   return [
-    '【充值统计】',
-    `实际付款总和：¥${totalPaid.toFixed(2)}`,
-    `成功订单数：${successfulOrderCount}`,
+    '【今日充值】',
+    `今日实际付款总和：¥${totalPaid.toFixed(2)}`,
+    `今日成功订单数：${successfulOrderCount}`,
   ].join('\n')
 }
 

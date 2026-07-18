@@ -165,8 +165,8 @@ test('recharge message shows actual paid total and successful order count', () =
     totalPaid: 1234.5,
     successfulOrderCount: 18,
   }), [
-    '【充值统计】',
-    '实际付款总和：¥1234.50',
-    '成功订单数：18',
+    '【今日充值】',
+    '今日实际付款总和：¥1234.50',
+    '今日成功订单数：18',
   ].join('\n'))
 })
