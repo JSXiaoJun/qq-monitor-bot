@@ -160,6 +160,17 @@ const fetchRatios = () => fetchMonitorData(ratioApiUrl, { method: 'POST', timeou
 
 const fetchUpstreamTodayUsages = () => fetchMonitorData(usageApiUrl, { method: 'POST', timeoutMs: 120000 })
 
+let usageRefreshPromise = null
+const refreshUpstreamTodayUsages = () => {
+  if (!usageRefreshPromise) {
+    usageRefreshPromise = fetchUpstreamTodayUsages()
+      .finally(() => {
+        usageRefreshPromise = null
+      })
+  }
+  return usageRefreshPromise
+}
+
 const fetchLocalTodayUsage = () => fetchNewApiTodayUsage({
   baseUrl: newApiBaseUrl,
   accessToken: newApiAccessToken,
@@ -199,7 +210,7 @@ const handleMessage = (event) => {
       .then(async () => {
         console.log(`收到群 ${event.group_id} 的利润查询请求`)
         const [sites, localUsage] = await Promise.all([
-          fetchUpstreamTodayUsages(),
+          refreshUpstreamTodayUsages(),
           fetchLocalTodayUsage(),
         ])
         await sendGroupMessage(notificationGroupId, formatProfitMessage(sites, localUsage))
@@ -235,6 +246,9 @@ const handleMessage = (event) => {
     queue = queue
       .then(async () => {
         console.log(`收到群 ${event.group_id} 的余额请求`)
+        void refreshUpstreamTodayUsages()
+          .then(() => console.log('余额查询附带的今日消耗刷新完成'))
+          .catch((error) => console.warn('余额查询附带的今日消耗刷新失败，已忽略:', error.message))
         const sites = await fetchBalances()
         await sendGroupMessage(notificationGroupId, formatBalanceMessage(sites))
       })

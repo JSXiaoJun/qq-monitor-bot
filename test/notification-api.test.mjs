@@ -154,10 +154,36 @@ test('profit message lists upstream usage and calculates totals with two decimal
   ].join('\n'))
 })
 
-test('profit message rejects incomplete upstream usage', () => {
-  assert.throws(() => formatProfitMessage([
-    { name: 'xx', success: false, amount: null, error: '登录已过期' },
-  ], 200), /xx（登录已过期）/)
+test('profit message uses cached usage age and counts unavailable sites as zero', () => {
+  assert.equal(formatProfitMessage([
+    { name: '实时上游', success: true, cached: false, amount: 10 },
+    {
+      name: '缓存上游',
+      success: true,
+      cached: true,
+      amount: 20.25,
+      fetched_at: '2026-07-24T15:25:00+08:00',
+      error: 'HTTP 403',
+    },
+    {
+      name: '较早缓存上游',
+      success: true,
+      cached: true,
+      amount: 4.75,
+      fetched_at: '2026-07-24T14:00:00+08:00',
+      error: '请求超时',
+    },
+    { name: '无记录上游', success: false, cached: false, amount: null, error: '请求超时' },
+  ], 50, new Date('2026-07-24T16:00:00+08:00')), [
+    '【利润】',
+    '实时上游：10.00',
+    '缓存上游：20.25（35分钟前）',
+    '较早缓存上游：4.75（2小时前）',
+    '无记录上游：查询失败（0）',
+    '上游总和：35.00',
+    '本站消耗：50.00',
+    '利润：15.00',
+  ].join('\n'))
 })
 
 test('recharge message shows actual paid total and successful order count', () => {

@@ -65,25 +65,31 @@ export const formatRatioMessage = (sites) => {
   return lines.join('\n')
 }
 
-export const formatProfitMessage = (sites, localUsage) => {
+const formatUsageAge = (fetchedAt, now) => {
+  const fetchedTime = Date.parse(String(fetchedAt || ''))
+  if (!Number.isFinite(fetchedTime)) return '时间未知'
+  const elapsedMs = Math.max(0, now.getTime() - fetchedTime)
+  if (elapsedMs < 60 * 1000) return '刚刚'
+  if (elapsedMs < 60 * 60 * 1000) return `${Math.floor(elapsedMs / (60 * 1000))}分钟前`
+  if (elapsedMs < 24 * 60 * 60 * 1000) return `${Math.floor(elapsedMs / (60 * 60 * 1000))}小时前`
+  return `${Math.floor(elapsedMs / (24 * 60 * 60 * 1000))}天前`
+}
+
+export const formatProfitMessage = (sites, localUsage, now = new Date()) => {
   if (!Array.isArray(sites)) throw new Error('上游今日消耗数据格式无效')
-  const failed = sites.filter((site) => site?.success === false)
-  if (failed.length > 0) {
-    const details = failed
-      .map((site) => `${String(site?.name || '未命名站点').trim()}（${site?.error || '查询失败'}）`)
-      .join('、')
-    throw new Error(`上游今日消耗查询不完整：${details}`)
-  }
 
   const lines = ['【利润】']
   let upstreamTotal = 0
   for (const site of sites) {
+    const name = String(site?.name || '未命名站点').trim()
     const amount = Number(site?.amount)
-    if (!Number.isFinite(amount)) {
-      throw new Error(`${String(site?.name || '未命名站点').trim()}缺少有效的今日消耗`)
+    if (site?.amount === null || site?.amount === undefined || !Number.isFinite(amount)) {
+      lines.push(`${name}：查询失败（0）`)
+      continue
     }
     upstreamTotal += amount
-    lines.push(`${String(site?.name || '未命名站点').trim()}：${amount.toFixed(2)}`)
+    const age = site?.cached ? `（${formatUsageAge(site.fetched_at, now)}）` : ''
+    lines.push(`${name}：${amount.toFixed(2)}${age}`)
   }
 
   const normalizedLocalUsage = Number(localUsage)
