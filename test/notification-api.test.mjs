@@ -104,16 +104,38 @@ test('balance command is accepted only from notification group', () => {
   assert.equal(isAllowedGroupCommand(event, '123456789', '查余额'), false)
 })
 
-test('balance message formats every site on its own line', () => {
+test('balance message shows age only when valid data is older than ten minutes', () => {
   assert.equal(formatBalanceMessage([
-    { name: '超哥', current_balance: 109.58, balance_currency: 'USD' },
-    { name: '聪明', current_balance: 143.75, balance_currency: 'USD' },
-    { name: '刀哥', current_balance: null, balance_currency: 'USD' },
-  ]), [
+    {
+      name: '十分钟内',
+      current_balance: 109.58,
+      balance_currency: 'USD',
+      balance_last_check_at: '2026-07-24T15:50:00+08:00',
+    },
+    {
+      name: '超过十分钟',
+      current_balance: 143.75,
+      balance_currency: 'CNY',
+      balance_last_check_at: '2026-07-24T15:49:59+08:00',
+    },
+    {
+      name: '两小时前',
+      current_balance: 20,
+      balance_currency: 'RMB',
+      balance_last_check_at: '2026-07-24T14:00:00+08:00',
+    },
+    {
+      name: '暂无余额',
+      current_balance: null,
+      balance_currency: 'USD',
+      balance_last_check_at: '2026-07-24T14:00:00+08:00',
+    },
+  ], new Date('2026-07-24T16:00:00+08:00')), [
     '【当前余额】',
-    '超哥：$109.58',
-    '聪明：$143.75',
-    '刀哥：暂无数据',
+    '十分钟内：$109.58',
+    '超过十分钟：¥143.75（10分钟前）',
+    '两小时前：¥20.00（2小时前）',
+    '暂无余额：暂无数据',
   ].join('\n'))
 })
 

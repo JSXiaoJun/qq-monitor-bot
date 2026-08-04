@@ -17,7 +17,7 @@ export const isAllowedGroupCommand = (event, groupId, command) => event?.post_ty
 
 export const isAllowedQueryCommand = isAllowedGroupCommand
 
-export const formatBalanceMessage = (sites) => {
+export const formatBalanceMessage = (sites, now = new Date()) => {
   const lines = ['【当前余额】']
   if (!Array.isArray(sites) || sites.length === 0) {
     lines.push('暂无站点')
@@ -30,7 +30,11 @@ export const formatBalanceMessage = (sites) => {
     const currency = String(site?.balance_currency || 'USD').trim().toUpperCase()
     let value = '暂无数据'
     if (site?.current_balance !== null && site?.current_balance !== undefined && Number.isFinite(balance)) {
-      value = currency === 'USD' ? `$${balance.toFixed(2)}` : `${currency} ${balance.toFixed(2)}`
+      const symbol = currency === 'USD' ? '$' : ['CNY', 'RMB'].includes(currency) ? '¥' : `${currency} `
+      const checkedTime = Date.parse(String(site?.balance_last_check_at || ''))
+      const elapsedMs = Number.isFinite(checkedTime) ? Math.max(0, now.getTime() - checkedTime) : 0
+      const age = elapsedMs > 10 * 60 * 1000 ? `（${formatUsageAge(site.balance_last_check_at, now)}）` : ''
+      value = `${symbol}${balance.toFixed(2)}${age}`
     }
     lines.push(`${name}：${value}`)
   }
