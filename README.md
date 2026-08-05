@@ -2,6 +2,8 @@
 
 指定查询群的成员发送精确指令 `查监控` 后，机器人先发送公开状态页地址 `https://status.yyapi.cloud/status/ai-status`，再打开该固定页面截图并发回查询群。服务通过 OneBot 11 WebSocket 与 NapCatQQ 等 QQ 机器人框架通信，并提供受 Token 保护的 HTTP 接口，将上游监控通知发送到独立指定群。
 
+每次代码推送到 `main` 后，GitHub Actions 会自动构建 `linux/amd64` 和 `linux/arm64` 镜像，并发布到 `ghcr.io/jsxiaojun/qq-monitor-bot:latest`。服务器上的 Compose 直接拉取该镜像，不需要在服务器本地构建。
+
 ## 1. Linux Docker 部署
 
 项目的 Compose 同时运行 NapCatQQ 和截图机器人。NapCat 的 OneBot 端口只在 Docker 私有网络内使用，不占用宿主机端口。
@@ -12,8 +14,15 @@ cd qq-monitor-bot
 cp .env.example .env
 sed -i 's/^NAPCAT_ACCOUNT=$/NAPCAT_ACCOUNT=你的机器人QQ号/' .env
 docker network create qq-notify
-docker compose up -d --build
+docker compose up -d
 docker compose logs -f napcat
+```
+
+首次发布完成后，在 GitHub 仓库右侧的 Packages 中打开 `qq-monitor-bot`，进入 Package settings，将包的可见性改为 Public。此后可在 Docker 管理界面中对 `qq-monitor-bot` 执行“拉取最新镜像并重新创建”完成更新；命令行等价操作为：
+
+```bash
+docker compose pull monitor-bot
+docker compose up -d monitor-bot
 ```
 
 NapCat WebUI 只监听服务器本机的 `6099` 端口。在自己的电脑上建立 SSH 隧道：
@@ -139,7 +148,7 @@ Authorization: Bearer <NOTIFY_API_TOKEN>
 | `NOTIFY_API_TOKEN` | 空 | HTTP 通知接口 Bearer Token；未配置时拒绝请求 |
 | `NOTIFY_PORT` | `3100` | Docker 共享网络中的通知接口端口 |
 | `SCREENSHOT_DELAY_MS` | `3000` | 页面打开后的等待时间 |
-| `SCREENSHOT_FULL_PAGE` | `false` | 是否截取完整页面 |
+| `SCREENSHOT_FULL_PAGE` | `true` | 是否截取完整页面；监控项较多时保持开启，避免只截到固定视口高度 |
 | `VIEWPORT_WIDTH` | `1440` | 浏览器视口宽度 |
 | `VIEWPORT_HEIGHT` | `900` | 浏览器视口高度 |
 

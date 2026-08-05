@@ -126,7 +126,7 @@ const capture = async () => {
     })
     await page.waitForTimeout(delayMs)
     return await page.screenshot({
-      fullPage: process.env.SCREENSHOT_FULL_PAGE === 'true',
+      fullPage: process.env.SCREENSHOT_FULL_PAGE !== 'false',
       type: 'png',
     })
   } finally {

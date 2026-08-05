@@ -40,7 +40,8 @@ services:
         max-file: '3'
 
   monitor-bot:
-    build: .
+    image: ghcr.io/jsxiaojun/qq-monitor-bot:latest
+    pull_policy: always
     container_name: qq-monitor-bot
     restart: unless-stopped
     depends_on:
@@ -67,7 +68,7 @@ services:
       NOTIFY_HOST: 0.0.0.0
       NOTIFY_PORT: 3100
       SCREENSHOT_DELAY_MS: '${SCREENSHOT_DELAY_MS:-3000}'
-      SCREENSHOT_FULL_PAGE: '${SCREENSHOT_FULL_PAGE:-false}'
+      SCREENSHOT_FULL_PAGE: '${SCREENSHOT_FULL_PAGE:-true}'
       VIEWPORT_WIDTH: '${VIEWPORT_WIDTH:-1440}'
       VIEWPORT_HEIGHT: '${VIEWPORT_HEIGHT:-900}'
       TZ: Asia/Shanghai
