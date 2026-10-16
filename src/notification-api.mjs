@@ -13,31 +13,174 @@ export const isAllowedGroupCommand = (event, groupId, command) => event?.post_ty
   && event?.message_type === 'group'
   && Boolean(groupId)
   && String(event.group_id) === groupId
-  && event.raw_message?.trim() === command
+  && String(event.command_text ?? event.raw_message ?? '').trim() === command
 
 export const isAllowedQueryCommand = isAllowedGroupCommand
 
-export const formatBalanceMessage = (sites, now = new Date()) => {
-  const lines = ['【当前余额】']
-  if (!Array.isArray(sites) || sites.length === 0) {
-    lines.push('暂无站点')
+export const parseGroupCommand = (event, groupId, command) => {
+  if (event?.post_type !== 'message' || event?.message_type !== 'group') return null
+  if (!groupId || String(event.group_id) !== groupId) return null
+  const text = String(event.command_text ?? event.raw_message ?? '').trim()
+  if (text === command) return { filter: '' }
+  if (!text.startsWith(command)) return null
+  const rest = text.slice(command.length)
+  if (!/^\s/.test(rest)) return null
+  return { filter: rest.trim() }
+}
+
+// Must stay identical to DEFAULT_BOT_TEMPLATES in upstream-ratio-watch/app.py.
+export const DEFAULT_TEMPLATES = Object.freeze({
+  profit_title: '【利润】',
+  profit_group_header: '▍{group}',
+  profit_site_line: '{name}：{amount}{age}',
+  profit_site_failed: '{name}：查询失败（0）',
+  profit_group_subtotal: '小计：{subtotal}',
+  profit_separator: '——————',
+  profit_footer: '上游总和：{upstream_total}\n本站消耗：{local_usage}\n利润：{profit}',
+  profit_filter_title: '【上游消耗 · {group}】',
+  profit_filter_footer: '分组合计：{total}',
+  balance_title: '【当前余额】',
+  balance_filter_title: '【当前余额 · {group}】',
+  balance_group_header: '▍{group}',
+  balance_site_line: '{name}：{balance}{age}',
+  balance_site_missing: '{name}：暂无数据',
+  balance_group_subtotal: '小计：{subtotal}',
+})
+
+export const resolveTemplates = (overrides) => {
+  const templates = { ...DEFAULT_TEMPLATES }
+  if (overrides && typeof overrides === 'object') {
+    for (const [key, value] of Object.entries(overrides)) {
+      if (key in DEFAULT_TEMPLATES && typeof value === 'string') templates[key] = value
+    }
+  }
+  return templates
+}
+
+// Unknown placeholders are left as-is so a typo shows up in the message instead of vanishing.
+export const renderTemplate = (template, values) => String(template ?? '')
+  .replace(/\{([A-Za-z_]+)\}/g, (match, key) => (Object.hasOwn(values, key) ? String(values[key] ?? '') : match))
+
+// An empty rendered template means "omit this line".
+const pushRendered = (lines, template, values) => {
+  const text = renderTemplate(template, values)
+  if (text !== '') lines.push(text)
+}
+
+export const resolveCommandAlias = (text, aliases) => {
+  const message = String(text || '').trim()
+  if (!Array.isArray(aliases) || !message) return message
+  const [head, ...rest] = message.split(/\s+/)
+  const entry = aliases.find((item) => String(item?.alias || '').trim() === head)
+  const target = String(entry?.target || '').trim()
+  if (!target) return message
+  return rest.length ? `${target} ${rest.join(' ')}` : target
+}
+
+const UNGROUPED_NAME = '未分组'
+
+const groupNameOf = (site) => String(site?.group_name || '').trim() || UNGROUPED_NAME
+
+export const groupSites = (sites) => {
+  const groups = []
+  const byName = new Map()
+  for (const site of Array.isArray(sites) ? sites : []) {
+    const name = groupNameOf(site)
+    if (!byName.has(name)) {
+      const group = { name, sites: [] }
+      byName.set(name, group)
+      groups.push(group)
+    }
+    byName.get(name).sites.push(site)
+  }
+  return groups
+}
+
+export const filterSitesByGroup = (sites, filter) => {
+  const keyword = String(filter || '').trim().toLowerCase()
+  if (!keyword) return sites
+  return (Array.isArray(sites) ? sites : []).filter((site) => groupNameOf(site).toLowerCase() === keyword)
+}
+
+const hasGroupInfo = (sites) => Array.isArray(sites) && sites.some((site) => String(site?.group_name || '').trim())
+
+const currencySymbol = (currency) => (currency === 'USD' ? '$' : ['CNY', 'RMB'].includes(currency) ? '¥' : `${currency} `)
+
+const siteName = (site) => String(site?.name || '未命名站点').trim()
+
+const balanceLine = (site, now, templates, group) => {
+  const name = siteName(site)
+  const balance = Number(site?.current_balance)
+  const currency = String(site?.balance_currency || 'USD').trim().toUpperCase()
+  if (site?.current_balance === null || site?.current_balance === undefined || !Number.isFinite(balance)) {
+    return { template: templates.balance_site_missing, values: { name, group }, amount: null, currency }
+  }
+  const checkedTime = Date.parse(String(site?.balance_last_check_at || ''))
+  const elapsedMs = Number.isFinite(checkedTime) ? Math.max(0, now.getTime() - checkedTime) : 0
+  const age = elapsedMs > 10 * 60 * 1000 ? `（${formatUsageAge(site.balance_last_check_at, now)}）` : ''
+  return {
+    template: templates.balance_site_line,
+    values: { name, group, balance: `${currencySymbol(currency)}${balance.toFixed(2)}`, age },
+    amount: balance,
+    currency,
+  }
+}
+
+export const formatBalanceMessage = (sites, now = new Date(), { filter = '', templates: overrides } = {}) => {
+  const templates = resolveTemplates(overrides)
+  const lines = []
+  pushRendered(lines, filter ? templates.balance_filter_title : templates.balance_title, { group: filter })
+  const selected = filterSitesByGroup(sites, filter)
+  if (!Array.isArray(selected) || selected.length === 0) {
+    lines.push(filter ? `未找到分组「${filter}」，发送“查分组”查看全部分组` : '暂无站点')
     return lines.join('\n')
   }
 
-  for (const site of sites) {
-    const name = String(site?.name || '未命名站点').trim()
-    const balance = Number(site?.current_balance)
-    const currency = String(site?.balance_currency || 'USD').trim().toUpperCase()
-    let value = '暂无数据'
-    if (site?.current_balance !== null && site?.current_balance !== undefined && Number.isFinite(balance)) {
-      const symbol = currency === 'USD' ? '$' : ['CNY', 'RMB'].includes(currency) ? '¥' : `${currency} `
-      const checkedTime = Date.parse(String(site?.balance_last_check_at || ''))
-      const elapsedMs = Number.isFinite(checkedTime) ? Math.max(0, now.getTime() - checkedTime) : 0
-      const age = elapsedMs > 10 * 60 * 1000 ? `（${formatUsageAge(site.balance_last_check_at, now)}）` : ''
-      value = `${symbol}${balance.toFixed(2)}${age}`
+  if (!hasGroupInfo(selected)) {
+    for (const site of selected) {
+      const line = balanceLine(site, now, templates, '')
+      pushRendered(lines, line.template, line.values)
     }
-    lines.push(`${name}：${value}`)
+    return lines.join('\n')
   }
+
+  for (const group of groupSites(selected)) {
+    pushRendered(lines, templates.balance_group_header, { group: group.name, count: group.sites.length })
+    let subtotal = 0
+    let subtotalCurrency = null
+    let mixedCurrency = false
+    for (const site of group.sites) {
+      const line = balanceLine(site, now, templates, group.name)
+      pushRendered(lines, line.template, line.values)
+      if (line.amount === null) continue
+      if (subtotalCurrency && subtotalCurrency !== line.currency) mixedCurrency = true
+      subtotalCurrency = subtotalCurrency || line.currency
+      subtotal += line.amount
+    }
+    if (subtotalCurrency && !mixedCurrency) {
+      pushRendered(lines, templates.balance_group_subtotal, {
+        group: group.name,
+        count: group.sites.length,
+        subtotal: `${currencySymbol(subtotalCurrency)}${subtotal.toFixed(2)}`,
+      })
+    }
+  }
+  return lines.join('\n')
+}
+
+export const formatGroupListMessage = (sites) => {
+  const lines = ['【汇报分组】']
+  const groups = groupSites(sites)
+  if (groups.length === 0) {
+    lines.push('暂无站点')
+    return lines.join('\n')
+  }
+  for (const group of groups) {
+    const names = group.sites.map((site) => String(site?.name || '未命名站点').trim())
+    lines.push(`▍${group.name}（${names.length}）`)
+    lines.push(names.join('、'))
+  }
+  lines.push('用法：查利润 分组名 / 查余额 分组名')
   return lines.join('\n')
 }
 
@@ -79,28 +222,74 @@ const formatUsageAge = (fetchedAt, now) => {
   return `${Math.floor(elapsedMs / (24 * 60 * 60 * 1000))}天前`
 }
 
-export const formatProfitMessage = (sites, localUsage, now = new Date()) => {
-  if (!Array.isArray(sites)) throw new Error('上游今日消耗数据格式无效')
+const usageLine = (site, now, templates, group) => {
+  const name = siteName(site)
+  const amount = Number(site?.amount)
+  if (site?.amount === null || site?.amount === undefined || !Number.isFinite(amount)) {
+    return { template: templates.profit_site_failed, values: { name, group }, amount: 0 }
+  }
+  const age = site?.cached ? `（${formatUsageAge(site.fetched_at, now)}）` : ''
+  return { template: templates.profit_site_line, values: { name, group, amount: amount.toFixed(2), age }, amount }
+}
 
-  const lines = ['【利润】']
-  let upstreamTotal = 0
-  for (const site of sites) {
-    const name = String(site?.name || '未命名站点').trim()
-    const amount = Number(site?.amount)
-    if (site?.amount === null || site?.amount === undefined || !Number.isFinite(amount)) {
-      lines.push(`${name}：查询失败（0）`)
-      continue
+export const formatProfitMessage = (sites, localUsage, now = new Date(), { filter = '', templates: overrides } = {}) => {
+  if (!Array.isArray(sites)) throw new Error('上游今日消耗数据格式无效')
+  const templates = resolveTemplates(overrides)
+
+  const selected = filterSitesByGroup(sites, filter)
+  if (filter) {
+    const lines = []
+    pushRendered(lines, templates.profit_filter_title, { group: filter })
+    if (selected.length === 0) {
+      lines.push(`未找到分组「${filter}」，发送“查分组”查看全部分组`)
+      return lines.join('\n')
     }
-    upstreamTotal += amount
-    const age = site?.cached ? `（${formatUsageAge(site.fetched_at, now)}）` : ''
-    lines.push(`${name}：${amount.toFixed(2)}${age}`)
+    let groupTotal = 0
+    for (const site of selected) {
+      const line = usageLine(site, now, templates, filter)
+      pushRendered(lines, line.template, line.values)
+      groupTotal += line.amount
+    }
+    pushRendered(lines, templates.profit_filter_footer, { group: filter, total: groupTotal.toFixed(2) })
+    return lines.join('\n')
+  }
+
+  const lines = []
+  pushRendered(lines, templates.profit_title, {})
+  let upstreamTotal = 0
+  const grouped = hasGroupInfo(sites)
+  if (grouped) {
+    for (const group of groupSites(sites)) {
+      pushRendered(lines, templates.profit_group_header, { group: group.name, count: group.sites.length })
+      let subtotal = 0
+      for (const site of group.sites) {
+        const line = usageLine(site, now, templates, group.name)
+        pushRendered(lines, line.template, line.values)
+        subtotal += line.amount
+      }
+      upstreamTotal += subtotal
+      pushRendered(lines, templates.profit_group_subtotal, {
+        group: group.name,
+        count: group.sites.length,
+        subtotal: subtotal.toFixed(2),
+      })
+    }
+  } else {
+    for (const site of sites) {
+      const line = usageLine(site, now, templates, '')
+      pushRendered(lines, line.template, line.values)
+      upstreamTotal += line.amount
+    }
   }
 
   const normalizedLocalUsage = Number(localUsage)
   if (!Number.isFinite(normalizedLocalUsage)) throw new Error('本站今日消耗数据无效')
-  lines.push(`上游总和：${upstreamTotal.toFixed(2)}`)
-  lines.push(`本站消耗：${normalizedLocalUsage.toFixed(2)}`)
-  lines.push(`利润：${(normalizedLocalUsage - upstreamTotal).toFixed(2)}`)
+  if (grouped) pushRendered(lines, templates.profit_separator, {})
+  pushRendered(lines, templates.profit_footer, {
+    upstream_total: upstreamTotal.toFixed(2),
+    local_usage: normalizedLocalUsage.toFixed(2),
+    profit: (normalizedLocalUsage - upstreamTotal).toFixed(2),
+  })
   return lines.join('\n')
 }
 

@@ -5,12 +5,15 @@ import WebSocket from 'ws'
 import {
   createNotificationServer,
   formatBalanceMessage,
+  formatGroupListMessage,
   formatProfitMessage,
   formatRatioMessage,
   formatRechargeMessage,
   isAllowedGroupCommand,
   isAllowedQueryCommand,
   normalizeGroupId,
+  parseGroupCommand,
+  resolveCommandAlias,
 } from './notification-api.mjs'
 import { fetchNewApiTodayUsage } from './profit-api.mjs'
 import { fetchNewApiRechargeStats } from './recharge-api.mjs'
@@ -25,7 +28,9 @@ const ratioCommand = process.env.RATIO_COMMAND || '查倍率'
 const ratioApiUrl = process.env.RATIO_API_URL || 'http://upstream-ratio-watch:8000/api/bot/ratios'
 const profitCommand = process.env.PROFIT_COMMAND || '查利润'
 const rechargeCommand = process.env.RECHARGE_COMMAND || '查充值'
+const groupListCommand = process.env.GROUP_LIST_COMMAND || '查分组'
 const usageApiUrl = process.env.USAGE_API_URL || 'http://upstream-ratio-watch:8000/api/bot/usages/today'
+const botConfigApiUrl = process.env.BOT_CONFIG_API_URL || 'http://upstream-ratio-watch:8000/api/bot/config'
 const newApiBaseUrl = process.env.NEWAPI_BASE_URL || ''
 const newApiAccessToken = process.env.NEWAPI_ACCESS_TOKEN || ''
 const newApiUserId = process.env.NEWAPI_USER_ID || ''
@@ -186,7 +191,59 @@ const fetchRechargeStats = () => fetchNewApiRechargeStats({
   timeZone: profitTimezone,
 })
 
-const handleMessage = (event) => {
+const BOT_CONFIG_TTL_MS = 30 * 1000
+let botConfig = { aliases: [], templates: {} }
+let botConfigFetchedAt = 0
+let botConfigPromise = null
+
+const fetchBotConfig = async () => {
+  if (!notifyApiToken) throw new Error('NOTIFY_API_TOKEN 未配置')
+  const response = await fetch(botConfigApiUrl, {
+    headers: { Authorization: `Bearer ${notifyApiToken}` },
+    signal: AbortSignal.timeout(5000),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !payload?.success || !payload.data || typeof payload.data !== 'object') {
+    throw new Error(payload?.message || `机器人配置接口请求失败（HTTP ${response.status}）`)
+  }
+  return {
+    aliases: Array.isArray(payload.data.aliases) ? payload.data.aliases : [],
+    templates: payload.data.templates && typeof payload.data.templates === 'object' ? payload.data.templates : {},
+  }
+}
+
+// Keeps serving the last good config (or built-in defaults) when the panel is unreachable.
+const getBotConfig = () => {
+  if (Date.now() - botConfigFetchedAt < BOT_CONFIG_TTL_MS) return Promise.resolve(botConfig)
+  if (!botConfigPromise) {
+    botConfigPromise = fetchBotConfig()
+      .then((config) => {
+        botConfig = config
+        return config
+      })
+      .catch((error) => {
+        console.warn('读取机器人配置失败，继续使用上次配置:', error.message)
+        return botConfig
+      })
+      .finally(() => {
+        botConfigFetchedAt = Date.now()
+        botConfigPromise = null
+      })
+  }
+  return botConfigPromise
+}
+
+const handleMessage = async (event) => {
+  if (event?.post_type !== 'message' || event?.message_type !== 'group') return
+  const groupId = String(event.group_id)
+  if (groupId !== notificationGroupId && groupId !== queryGroupId) return
+  const config = groupId === notificationGroupId ? await getBotConfig() : botConfig
+  const commandText = resolveCommandAlias(event.raw_message, config.aliases)
+  dispatchCommand({ ...event, command_text: commandText }, config)
+}
+
+const dispatchCommand = (event, config) => {
+  const { templates } = config
   if (isAllowedGroupCommand(event, notificationGroupId, rechargeCommand)) {
     if (!rememberMessage(event)) return
     queue = queue
@@ -204,16 +261,37 @@ const handleMessage = (event) => {
     return
   }
 
-  if (isAllowedGroupCommand(event, notificationGroupId, profitCommand)) {
+  if (isAllowedGroupCommand(event, notificationGroupId, groupListCommand)) {
     if (!rememberMessage(event)) return
     queue = queue
       .then(async () => {
-        console.log(`收到群 ${event.group_id} 的利润查询请求`)
+        console.log(`收到群 ${event.group_id} 的分组列表请求`)
+        const sites = await fetchBalances()
+        await sendGroupMessage(notificationGroupId, formatGroupListMessage(sites))
+      })
+      .catch((error) => {
+        console.error('分组列表查询或发送失败:', error)
+        Promise.resolve()
+          .then(() => sendGroupMessage(notificationGroupId, `分组查询失败：${error.message}`))
+          .catch((sendError) => console.error('发送分组查询失败提示时出错:', sendError))
+      })
+    return
+  }
+
+  const profitRequest = parseGroupCommand(event, notificationGroupId, profitCommand)
+  if (profitRequest) {
+    if (!rememberMessage(event)) return
+    queue = queue
+      .then(async () => {
+        console.log(`收到群 ${event.group_id} 的利润查询请求${profitRequest.filter ? `（分组：${profitRequest.filter}）` : ''}`)
         const [sites, localUsage] = await Promise.all([
           refreshUpstreamTodayUsages(),
-          fetchLocalTodayUsage(),
+          profitRequest.filter ? Promise.resolve(0) : fetchLocalTodayUsage(),
         ])
-        await sendGroupMessage(notificationGroupId, formatProfitMessage(sites, localUsage))
+        await sendGroupMessage(
+          notificationGroupId,
+          formatProfitMessage(sites, localUsage, new Date(), { filter: profitRequest.filter, templates }),
+        )
       })
       .catch((error) => {
         console.error('利润查询或发送失败:', error)
@@ -241,16 +319,20 @@ const handleMessage = (event) => {
     return
   }
 
-  if (isAllowedGroupCommand(event, notificationGroupId, balanceCommand)) {
+  const balanceRequest = parseGroupCommand(event, notificationGroupId, balanceCommand)
+  if (balanceRequest) {
     if (!rememberMessage(event)) return
     queue = queue
       .then(async () => {
-        console.log(`收到群 ${event.group_id} 的余额请求`)
+        console.log(`收到群 ${event.group_id} 的余额请求${balanceRequest.filter ? `（分组：${balanceRequest.filter}）` : ''}`)
         void refreshUpstreamTodayUsages()
           .then(() => console.log('余额查询附带的今日消耗刷新完成'))
           .catch((error) => console.warn('余额查询附带的今日消耗刷新失败，已忽略:', error.message))
         const sites = await fetchBalances()
-        await sendGroupMessage(notificationGroupId, formatBalanceMessage(sites))
+        await sendGroupMessage(
+          notificationGroupId,
+          formatBalanceMessage(sites, new Date(), { filter: balanceRequest.filter, templates }),
+        )
       })
       .catch((error) => {
         console.error('余额查询或发送失败:', error)
@@ -300,7 +382,9 @@ const connect = () => {
   ws.on('message', (data) => {
     try {
       const payload = JSON.parse(data.toString())
-      if (!settleOneBotAction(payload)) handleMessage(payload)
+      if (!settleOneBotAction(payload)) {
+        handleMessage(payload).catch((error) => console.error('处理群消息失败:', error))
+      }
     } catch (err) {
       console.warn('忽略无法解析的 OneBot 消息:', err.message)
     }
@@ -337,6 +421,7 @@ notificationServer.listen(notifyPort, notifyHost, () => {
   console.log(`余额查询接口: ${balanceApiUrl}`)
   console.log(`实时倍率接口: ${ratioApiUrl}`)
   console.log(`上游今日消耗接口: ${usageApiUrl}`)
+  console.log(`机器人配置接口: ${botConfigApiUrl}`)
   console.log(`充值统计指令: ${rechargeCommand}`)
 })
 
