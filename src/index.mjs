@@ -237,7 +237,7 @@ const handleMessage = async (event) => {
   if (event?.post_type !== 'message' || event?.message_type !== 'group') return
   const groupId = String(event.group_id)
   if (groupId !== notificationGroupId && groupId !== queryGroupId) return
-  const config = groupId === notificationGroupId ? await getBotConfig() : botConfig
+  const config = await getBotConfig()
   const commandText = resolveCommandAlias(event.raw_message, config.aliases)
   dispatchCommand({ ...event, command_text: commandText }, config)
 }

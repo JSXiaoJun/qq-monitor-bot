@@ -102,6 +102,9 @@ export const filterSitesByGroup = (sites, filter) => {
   return (Array.isArray(sites) ? sites : []).filter((site) => groupNameOf(site).toLowerCase() === keyword)
 }
 
+// Displays the group's real name ("GPT") instead of whatever casing the user typed ("gpt").
+const displayFilterName = (sites, filter) => (sites.length ? groupNameOf(sites[0]) : filter)
+
 const hasGroupInfo = (sites) => Array.isArray(sites) && sites.some((site) => String(site?.group_name || '').trim())
 
 const currencySymbol = (currency) => (currency === 'USD' ? '$' : ['CNY', 'RMB'].includes(currency) ? '¥' : `${currency} `)
@@ -129,8 +132,9 @@ const balanceLine = (site, now, templates, group) => {
 export const formatBalanceMessage = (sites, now = new Date(), { filter = '', templates: overrides } = {}) => {
   const templates = resolveTemplates(overrides)
   const lines = []
-  pushRendered(lines, filter ? templates.balance_filter_title : templates.balance_title, { group: filter })
   const selected = filterSitesByGroup(sites, filter)
+  const groupLabel = filter && Array.isArray(selected) ? displayFilterName(selected, filter) : filter
+  pushRendered(lines, filter ? templates.balance_filter_title : templates.balance_title, { group: groupLabel })
   if (!Array.isArray(selected) || selected.length === 0) {
     lines.push(filter ? `未找到分组「${filter}」，发送“查分组”查看全部分组` : '暂无站点')
     return lines.join('\n')
@@ -239,18 +243,19 @@ export const formatProfitMessage = (sites, localUsage, now = new Date(), { filte
   const selected = filterSitesByGroup(sites, filter)
   if (filter) {
     const lines = []
-    pushRendered(lines, templates.profit_filter_title, { group: filter })
+    const groupLabel = displayFilterName(selected, filter)
+    pushRendered(lines, templates.profit_filter_title, { group: groupLabel })
     if (selected.length === 0) {
       lines.push(`未找到分组「${filter}」，发送“查分组”查看全部分组`)
       return lines.join('\n')
     }
     let groupTotal = 0
     for (const site of selected) {
-      const line = usageLine(site, now, templates, filter)
+      const line = usageLine(site, now, templates, groupLabel)
       pushRendered(lines, line.template, line.values)
       groupTotal += line.amount
     }
-    pushRendered(lines, templates.profit_filter_footer, { group: filter, total: groupTotal.toFixed(2) })
+    pushRendered(lines, templates.profit_filter_footer, { group: groupLabel, total: groupTotal.toFixed(2) })
     return lines.join('\n')
   }
 

@@ -81,7 +81,7 @@ test('balance message groups sites and adds subtotal per group', () => {
     'C：暂无数据',
   ].join('\n'))
   assert.equal(formatBalanceMessage(sites, now, { filter: 'GPT' }), [
-    '【当前余额 · GPT】',
+    '【当前余额 · gpt】',
     '▍gpt',
     'C：暂无数据',
   ].join('\n'))
