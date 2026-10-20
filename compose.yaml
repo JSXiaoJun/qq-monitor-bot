@@ -56,6 +56,8 @@ services:
       RATIO_API_URL: '${RATIO_API_URL:-http://upstream-ratio-watch:8000/api/bot/ratios}'
       PROFIT_COMMAND: '${PROFIT_COMMAND:-查利润}'
       RECHARGE_COMMAND: '${RECHARGE_COMMAND:-查充值}'
+      QUOTA_TOTAL_COMMAND: '${QUOTA_TOTAL_COMMAND:-查总量}'
+      NEGATIVE_QUOTA_COMMAND: '${NEGATIVE_QUOTA_COMMAND:-查负数}'
       GROUP_LIST_COMMAND: '${GROUP_LIST_COMMAND:-查分组}'
       BOT_CONFIG_API_URL: '${BOT_CONFIG_API_URL:-http://upstream-ratio-watch:8000/api/bot/config}'
       USAGE_API_URL: '${USAGE_API_URL:-http://upstream-ratio-watch:8000/api/bot/usages/today}'

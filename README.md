@@ -144,6 +144,27 @@ NEWAPI_USER_ID=1
 
 充值统计复用上述本站 NewAPI 管理员凭据和 `PROFIT_TIMEZONE` 时区，不经过 `upstream-ratio-watch`。待支付、失败、过期以及非当天完成的订单不会计入结果。
 
+在通知群发送精确指令 `查总量`，机器人会遍历本站 NewAPI 管理员用户列表接口 `/api/user/` 的全部分页，汇总额度为正数的用户余额（排除 ID 为 `1` 的用户和已注销用户），按 `quota_per_unit` 换算后回复：
+
+```text
+【用户总额度】
+用户余额总和：5678.90
+有余额用户数：42
+（仅统计额度为正的用户，已排除 ID 1）
+```
+
+总量统计复用上述本站 NewAPI 管理员凭据。使用按权限授权的新版访问令牌时，需要勾选用户 · 查看（`user:read`）权限。
+
+在通知群发送精确指令 `查负数`，机器人会用同一个用户列表接口找出欠费超过阈值的用户（额度换算后小于 `-阈值`，不含已注销用户），按 ID 升序、英文逗号分隔回复：
+
+```text
+【负额度用户】（欠费超过 5.00）
+12,57,203
+共 3 人
+```
+
+阈值在 `upstream-ratio-watch` 的“机器人指令”页面设置，默认 `5`，保存后最多 30 秒生效；监控面板不可用时使用上一次读取到的阈值，从未读取成功时使用 `5`。
+
 通知接口只在共享 Docker 网络中暴露：
 
 ```text
@@ -167,6 +188,8 @@ Authorization: Bearer <NOTIFY_API_TOKEN>
 | `GROUP_LIST_COMMAND` | `查分组` | 通知群内列出汇报分组及组内站点的精确指令 |
 | `BOT_CONFIG_API_URL` | `http://upstream-ratio-watch:8000/api/bot/config` | 监控面板的指令别名与消息模板接口 |
 | `RECHARGE_COMMAND` | `查充值` | 通知群内查询本站 NewAPI 今日成功充值总额与订单数的精确指令 |
+| `QUOTA_TOTAL_COMMAND` | `查总量` | 通知群内查询本站 NewAPI 全部用户正数余额总和（排除 ID 1）的精确指令 |
+| `NEGATIVE_QUOTA_COMMAND` | `查负数` | 通知群内列出欠费超过阈值的用户 ID 的精确指令，阈值在监控面板设置 |
 | `USAGE_API_URL` | `http://upstream-ratio-watch:8000/api/bot/usages/today` | 监控面板实时查询上游今日消耗的接口 |
 | `NEWAPI_BASE_URL` | 空 | 本站 NewAPI 地址 |
 | `NEWAPI_ACCESS_TOKEN` | 空 | 本站 NewAPI 管理员/超级管理员系统访问令牌 |

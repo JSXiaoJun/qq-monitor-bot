@@ -1,6 +1,6 @@
-const DEFAULT_QUOTA_PER_UNIT = 500000
+export const DEFAULT_QUOTA_PER_UNIT = 500000
 
-const findQuotaPerUnit = (value) => {
+export const findQuotaPerUnit = (value) => {
   if (!value || typeof value !== 'object') return null
   for (const [key, nested] of Object.entries(value)) {
     if (String(key).toLowerCase() === 'quota_per_unit') {

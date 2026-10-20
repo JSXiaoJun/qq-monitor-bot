@@ -312,6 +312,34 @@ export const formatRechargeMessage = (stats) => {
   ].join('\n')
 }
 
+export const formatQuotaTotalMessage = (stats) => {
+  const totalAmount = Number(stats?.totalAmount)
+  const positiveUserCount = Number(stats?.positiveUserCount)
+  if (!Number.isFinite(totalAmount) || totalAmount < 0) throw new Error('用户额度总和无效')
+  if (!Number.isInteger(positiveUserCount) || positiveUserCount < 0) {
+    throw new Error('有余额用户数无效')
+  }
+  return [
+    '【用户总额度】',
+    `用户余额总和：${totalAmount.toFixed(2)}`,
+    `有余额用户数：${positiveUserCount}`,
+    '（仅统计额度为正的用户，已排除 ID 1）',
+  ].join('\n')
+}
+
+export const formatNegativeQuotaMessage = (result) => {
+  const threshold = Number(result?.threshold)
+  if (!Number.isFinite(threshold) || threshold < 0) throw new Error('负额度阈值无效')
+  if (!Array.isArray(result?.userIds)) throw new Error('负额度用户列表无效')
+  const title = `【负额度用户】（欠费超过 ${threshold.toFixed(2)}）`
+  if (result.userIds.length === 0) return [title, '暂无'].join('\n')
+  return [
+    title,
+    result.userIds.join(','),
+    `共 ${result.userIds.length} 人`,
+  ].join('\n')
+}
+
 const tokensMatch = (expected, actual) => {
   const expectedBuffer = Buffer.from(expected || '')
   const actualBuffer = Buffer.from(actual || '')

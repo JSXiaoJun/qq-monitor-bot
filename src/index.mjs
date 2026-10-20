@@ -6,7 +6,9 @@ import {
   createNotificationServer,
   formatBalanceMessage,
   formatGroupListMessage,
+  formatNegativeQuotaMessage,
   formatProfitMessage,
+  formatQuotaTotalMessage,
   formatRatioMessage,
   formatRechargeMessage,
   isAllowedGroupCommand,
@@ -17,6 +19,11 @@ import {
 } from './notification-api.mjs'
 import { fetchNewApiTodayUsage } from './profit-api.mjs'
 import { fetchNewApiRechargeStats } from './recharge-api.mjs'
+import {
+  DEFAULT_NEGATIVE_QUOTA_THRESHOLD,
+  fetchNewApiNegativeQuotaUsers,
+  fetchNewApiPositiveQuotaTotal,
+} from './quota-api.mjs'
 
 const monitorUrl = 'https://status.yyapi.cloud/status/ai-status'
 const statusPageMessage = '云影公开渠道状态页：https://status.yyapi.cloud/status/ai-status'
@@ -28,6 +35,8 @@ const ratioCommand = process.env.RATIO_COMMAND || '查倍率'
 const ratioApiUrl = process.env.RATIO_API_URL || 'http://upstream-ratio-watch:8000/api/bot/ratios'
 const profitCommand = process.env.PROFIT_COMMAND || '查利润'
 const rechargeCommand = process.env.RECHARGE_COMMAND || '查充值'
+const quotaTotalCommand = process.env.QUOTA_TOTAL_COMMAND || '查总量'
+const negativeQuotaCommand = process.env.NEGATIVE_QUOTA_COMMAND || '查负数'
 const groupListCommand = process.env.GROUP_LIST_COMMAND || '查分组'
 const usageApiUrl = process.env.USAGE_API_URL || 'http://upstream-ratio-watch:8000/api/bot/usages/today'
 const botConfigApiUrl = process.env.BOT_CONFIG_API_URL || 'http://upstream-ratio-watch:8000/api/bot/config'
@@ -191,8 +200,23 @@ const fetchRechargeStats = () => fetchNewApiRechargeStats({
   timeZone: profitTimezone,
 })
 
+const fetchQuotaTotal = () => fetchNewApiPositiveQuotaTotal({
+  baseUrl: newApiBaseUrl,
+  accessToken: newApiAccessToken,
+  userId: newApiUserId,
+  quotaPerUnit: newApiQuotaPerUnit,
+})
+
+const fetchNegativeQuotaUsers = (threshold) => fetchNewApiNegativeQuotaUsers({
+  baseUrl: newApiBaseUrl,
+  accessToken: newApiAccessToken,
+  userId: newApiUserId,
+  quotaPerUnit: newApiQuotaPerUnit,
+  threshold,
+})
+
 const BOT_CONFIG_TTL_MS = 30 * 1000
-let botConfig = { aliases: [], templates: {} }
+let botConfig = { aliases: [], templates: {}, negativeQuotaThreshold: DEFAULT_NEGATIVE_QUOTA_THRESHOLD }
 let botConfigFetchedAt = 0
 let botConfigPromise = null
 
@@ -206,9 +230,11 @@ const fetchBotConfig = async () => {
   if (!response.ok || !payload?.success || !payload.data || typeof payload.data !== 'object') {
     throw new Error(payload?.message || `机器人配置接口请求失败（HTTP ${response.status}）`)
   }
+  const threshold = Number(payload.data.negative_quota_threshold)
   return {
     aliases: Array.isArray(payload.data.aliases) ? payload.data.aliases : [],
     templates: payload.data.templates && typeof payload.data.templates === 'object' ? payload.data.templates : {},
+    negativeQuotaThreshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : DEFAULT_NEGATIVE_QUOTA_THRESHOLD,
   }
 }
 
@@ -243,7 +269,7 @@ const handleMessage = async (event) => {
 }
 
 const dispatchCommand = (event, config) => {
-  const { templates } = config
+  const { templates, negativeQuotaThreshold } = config
   if (isAllowedGroupCommand(event, notificationGroupId, rechargeCommand)) {
     if (!rememberMessage(event)) return
     queue = queue
@@ -257,6 +283,40 @@ const dispatchCommand = (event, config) => {
         Promise.resolve()
           .then(() => sendGroupMessage(notificationGroupId, `充值查询失败：${error.message}`))
           .catch((sendError) => console.error('发送充值查询失败提示时出错:', sendError))
+      })
+    return
+  }
+
+  if (isAllowedGroupCommand(event, notificationGroupId, quotaTotalCommand)) {
+    if (!rememberMessage(event)) return
+    queue = queue
+      .then(async () => {
+        console.log(`收到群 ${event.group_id} 的用户总额度请求`)
+        const stats = await fetchQuotaTotal()
+        await sendGroupMessage(notificationGroupId, formatQuotaTotalMessage(stats))
+      })
+      .catch((error) => {
+        console.error('用户总额度查询或发送失败:', error)
+        Promise.resolve()
+          .then(() => sendGroupMessage(notificationGroupId, `总量查询失败：${error.message}`))
+          .catch((sendError) => console.error('发送总量查询失败提示时出错:', sendError))
+      })
+    return
+  }
+
+  if (isAllowedGroupCommand(event, notificationGroupId, negativeQuotaCommand)) {
+    if (!rememberMessage(event)) return
+    queue = queue
+      .then(async () => {
+        console.log(`收到群 ${event.group_id} 的负额度用户请求（阈值：${negativeQuotaThreshold}）`)
+        const result = await fetchNegativeQuotaUsers(negativeQuotaThreshold)
+        await sendGroupMessage(notificationGroupId, formatNegativeQuotaMessage(result))
+      })
+      .catch((error) => {
+        console.error('负额度用户查询或发送失败:', error)
+        Promise.resolve()
+          .then(() => sendGroupMessage(notificationGroupId, `负数查询失败：${error.message}`))
+          .catch((sendError) => console.error('发送负数查询失败提示时出错:', sendError))
       })
     return
   }
@@ -423,6 +483,8 @@ notificationServer.listen(notifyPort, notifyHost, () => {
   console.log(`上游今日消耗接口: ${usageApiUrl}`)
   console.log(`机器人配置接口: ${botConfigApiUrl}`)
   console.log(`充值统计指令: ${rechargeCommand}`)
+  console.log(`用户总额度指令: ${quotaTotalCommand}`)
+  console.log(`负额度用户指令: ${negativeQuotaCommand}`)
 })
 
 const shutdown = async () => {
