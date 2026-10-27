@@ -384,15 +384,22 @@ export const createNotificationServer = ({
   apiToken,
   notificationGroupId,
   isOneBotConnected,
+  getQqStatus = () => ({ qq_online: null }),
   sendGroupMessage,
   logger = console,
 }) => createServer(async (request, response) => {
   const requestUrl = new URL(request.url || '/', 'http://localhost')
 
   if (request.method === 'GET' && requestUrl.pathname === '/health') {
+    const connected = Boolean(isOneBotConnected())
+    const qqStatus = getQqStatus() || {}
     return sendJson(response, 200, {
       success: true,
-      onebot_connected: Boolean(isOneBotConnected()),
+      onebot_connected: connected,
+      // null means NapCat has not reported yet; false means the account is logged out.
+      qq_online: connected ? (qqStatus.qq_online ?? null) : false,
+      qq_status_reason: connected ? (qqStatus.qq_status_reason || '') : 'OneBot WebSocket 未连接',
+      qq_status_changed_at: qqStatus.qq_status_changed_at || null,
       notification_group_configured: Boolean(notificationGroupId),
     })
   }
@@ -412,6 +419,11 @@ export const createNotificationServer = ({
   }
   if (!isOneBotConnected()) {
     return sendJson(response, 503, { success: false, message: 'OneBot WebSocket 未连接' })
+  }
+  const qqStatus = getQqStatus() || {}
+  if (qqStatus.qq_online === false) {
+    const reason = qqStatus.qq_status_reason ? `：${qqStatus.qq_status_reason}` : ''
+    return sendJson(response, 503, { success: false, message: `QQ 账号已离线${reason}` })
   }
 
   try {

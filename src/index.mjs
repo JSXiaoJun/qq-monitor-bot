@@ -24,6 +24,7 @@ import {
   fetchNewApiNegativeQuotaUsers,
   fetchNewApiPositiveQuotaTotal,
 } from './quota-api.mjs'
+import { createQqStatusTracker } from './qq-status.mjs'
 
 const monitorUrl = 'https://status.yyapi.cloud/status/ai-status'
 const statusPageMessage = '云影公开渠道状态页：https://status.yyapi.cloud/status/ai-status'
@@ -56,11 +57,15 @@ const viewport = {
   height: Number(process.env.VIEWPORT_HEIGHT || 900),
 }
 
+const qqStatusPollMs = Number(process.env.QQ_STATUS_POLL_MS || 60000)
+
 const browser = await chromium.launch({ headless: true })
 const seenMessages = new Set()
+const qqStatus = createQqStatusTracker()
 let queue = Promise.resolve()
 let ws
 let reconnectTimer
+let qqStatusTimer
 let stopping = false
 let echoSequence = 0
 const pendingActions = new Map()
@@ -73,27 +78,18 @@ const rememberMessage = (event) => {
   return true
 }
 
-const sendGroupMessage = (groupId, message) => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error('OneBot WebSocket 未连接')
-  const normalizedGroupId = normalizeGroupId(groupId)
-  if (!normalizedGroupId) throw new Error('QQ群号格式无效')
+const callOneBotAction = (action, params = {}) => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('OneBot WebSocket 未连接'))
 
-  const echo = `send-group-${Date.now()}-${echoSequence += 1}`
+  const echo = `${action}-${Date.now()}-${echoSequence += 1}`
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       pendingActions.delete(echo)
-      reject(new Error('OneBot 发送响应超时'))
+      reject(new Error(`OneBot ${action} 响应超时`))
     }, 15000)
 
     pendingActions.set(echo, { resolve, reject, timeout })
-    ws.send(JSON.stringify({
-      action: 'send_group_msg',
-      params: {
-        group_id: Number(normalizedGroupId),
-        message,
-      },
-      echo,
-    }), (error) => {
+    ws.send(JSON.stringify({ action, params, echo }), (error) => {
       if (!error) return
       clearTimeout(timeout)
       pendingActions.delete(echo)
@@ -101,6 +97,25 @@ const sendGroupMessage = (groupId, message) => {
     })
   })
 }
+
+const sendGroupMessage = (groupId, message) => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error('OneBot WebSocket 未连接')
+  const normalizedGroupId = normalizeGroupId(groupId)
+  if (!normalizedGroupId) throw new Error('QQ群号格式无效')
+  return callOneBotAction('send_group_msg', { group_id: Number(normalizedGroupId), message })
+}
+
+const logQqStatusChange = () => {
+  const { qq_online: online, qq_status_reason: reason } = qqStatus.snapshot()
+  if (online === true) console.log('QQ 账号在线')
+  if (online === false) console.warn(`QQ 账号已掉线：${reason}`)
+}
+
+const refreshQqStatus = () => callOneBotAction('get_status')
+  .then((data) => {
+    if (qqStatus.applyStatus(data)) logQqStatusChange()
+  })
+  .catch((error) => console.warn('查询 QQ 在线状态失败:', error.message))
 
 const settleOneBotAction = (payload) => {
   if (!payload?.echo || !pendingActions.has(payload.echo)) return false
@@ -437,14 +452,15 @@ const connect = () => {
 
   ws.on('open', () => {
     console.log(`已连接 OneBot: ${onebotUrl}`)
+    void refreshQqStatus()
   })
 
   ws.on('message', (data) => {
     try {
       const payload = JSON.parse(data.toString())
-      if (!settleOneBotAction(payload)) {
-        handleMessage(payload).catch((error) => console.error('处理群消息失败:', error))
-      }
+      if (settleOneBotAction(payload)) return
+      if (qqStatus.observeEvent(payload)) logQqStatusChange()
+      handleMessage(payload).catch((error) => console.error('处理群消息失败:', error))
     } catch (err) {
       console.warn('忽略无法解析的 OneBot 消息:', err.message)
     }
@@ -456,6 +472,7 @@ const connect = () => {
 
   ws.on('close', () => {
     rejectPendingActions('OneBot WebSocket 已断开')
+    qqStatus.reset()
     if (stopping) return
     console.warn('OneBot 连接已断开，5 秒后重连')
     clearTimeout(reconnectTimer)
@@ -471,6 +488,7 @@ const notificationServer = createNotificationServer({
   apiToken: notifyApiToken,
   notificationGroupId,
   isOneBotConnected: () => ws?.readyState === WebSocket.OPEN,
+  getQqStatus: () => qqStatus.snapshot(),
   sendGroupMessage,
 })
 
@@ -490,6 +508,7 @@ notificationServer.listen(notifyPort, notifyHost, () => {
 const shutdown = async () => {
   stopping = true
   clearTimeout(reconnectTimer)
+  clearInterval(qqStatusTimer)
   ws?.close()
   rejectPendingActions('机器人正在停止')
   await new Promise((resolve) => notificationServer.close(resolve))
@@ -502,3 +521,6 @@ process.on('SIGINT', shutdown)
 process.on('SIGTERM', shutdown)
 
 connect()
+qqStatusTimer = setInterval(() => {
+  if (ws?.readyState === WebSocket.OPEN) void refreshQqStatus()
+}, qqStatusPollMs)

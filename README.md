@@ -172,7 +172,19 @@ POST http://qq-monitor-bot:3100/api/notify
 Authorization: Bearer <NOTIFY_API_TOKEN>
 ```
 
-请求中的 `group_id` 必须与 `NOTIFY_GROUP_ID` 完全一致，否则机器人返回 `403`。
+请求中的 `group_id` 必须与 `NOTIFY_GROUP_ID` 完全一致，否则机器人返回 `403`。QQ 账号已离线时返回 `503`。
+
+### 在线状态与掉线提醒
+
+`GET http://qq-monitor-bot:3100/health` 无需鉴权，除 OneBot 连接状态外还返回 QQ 账号是否在线：
+
+```json
+{ "success": true, "onebot_connected": true, "qq_online": true, "qq_status_reason": "", "qq_status_changed_at": "2026-10-27T02:30:00.000Z" }
+```
+
+在线状态来自 NapCat 的心跳事件、`bot_offline` 下线通知，以及每 60 秒一次的 `get_status` 查询（`QQ_STATUS_POLL_MS` 可调）。WebSocket 仍连着但 QQ 被踢下线时，`qq_online` 为 `false`；刚连上还没拿到状态时为 `null`。
+
+`upstream-ratio-watch` 会定时检查这个接口：掉线时通过邮箱、企业微信、飞书提醒（QQ 号掉线后本身发不出群消息），恢复后再向通知群发送 `【QQ 监控机器人】已恢复`。
 
 ## 环境变量
 
@@ -200,6 +212,7 @@ Authorization: Bearer <NOTIFY_API_TOKEN>
 | `NOTIFY_GROUP_ID` | 空 | 上游监控通知固定发送的 QQ 群号 |
 | `NOTIFY_API_TOKEN` | 空 | HTTP 通知接口 Bearer Token；未配置时拒绝请求 |
 | `NOTIFY_PORT` | `3100` | Docker 共享网络中的通知接口端口 |
+| `QQ_STATUS_POLL_MS` | `60000` | 主动查询 QQ 在线状态（`get_status`）的间隔毫秒数 |
 | `SCREENSHOT_DELAY_MS` | `3000` | 页面打开后的等待时间 |
 | `SCREENSHOT_FULL_PAGE` | `true` | 是否截取完整页面；监控项较多时保持开启，避免只截到固定视口高度 |
 | `VIEWPORT_WIDTH` | `1440` | 浏览器视口宽度 |
