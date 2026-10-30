@@ -7,6 +7,7 @@ import {
   formatProfitMessage,
   formatRatioMessage,
   formatRechargeMessage,
+  highlightLowBalance,
   isAllowedGroupCommand,
   isAllowedQueryCommand,
 } from '../src/notification-api.mjs'
@@ -75,9 +76,25 @@ test('notification API authenticates and sends only to configured group', async 
       groupId: '123456789',
       message: '【倍率变化】\ndefault 1 -> 1.2',
     }])
+
+    const bracketed = await requestJson(port, {
+      token: 'test-token',
+      body: { subject: '【NewAPI 低余额预警】站点A：¥9.68', message: '上游余额监控提醒' },
+    })
+    assert.equal(bracketed.status, 200)
+    assert.equal(sent[1].message, '🔴【NewAPI 低余额预警】站点A：¥9.68\n🔴上游余额监控提醒')
   } finally {
     await close(server)
   }
+})
+
+test('low-balance highlight marks only the first two lines of low-balance alerts', () => {
+  assert.equal(
+    highlightLowBalance('【NewAPI 低余额预警】A：¥1.00\n上游余额监控提醒\n站点：A'),
+    '🔴【NewAPI 低余额预警】A：¥1.00\n🔴上游余额监控提醒\n站点：A',
+  )
+  assert.equal(highlightLowBalance('🔴【低余额预警】A\n🔴提醒'), '🔴【低余额预警】A\n🔴提醒')
+  assert.equal(highlightLowBalance('【倍率变化】\ndefault 1 -> 1.2'), '【倍率变化】\ndefault 1 -> 1.2')
 })
 
 test('query command is accepted only from the configured group', () => {

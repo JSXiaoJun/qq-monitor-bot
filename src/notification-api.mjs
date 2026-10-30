@@ -340,6 +340,20 @@ export const formatNegativeQuotaMessage = (result) => {
   ].join('\n')
 }
 
+const LOW_BALANCE_MARK = '🔴'
+const LOW_BALANCE_HIGHLIGHT_LINES = 2
+
+// QQ text messages cannot be colored, so low-balance alerts get an emoji on their leading lines instead.
+export const highlightLowBalance = (content) => {
+  const lines = String(content ?? '').split('\n')
+  if (!lines[0]?.includes('低余额预警')) return content
+  return lines
+    .map((line, index) => (index < LOW_BALANCE_HIGHLIGHT_LINES && line && !line.startsWith(LOW_BALANCE_MARK)
+      ? `${LOW_BALANCE_MARK}${line}`
+      : line))
+    .join('\n')
+}
+
 const tokensMatch = (expected, actual) => {
   const expectedBuffer = Buffer.from(expected || '')
   const actualBuffer = Buffer.from(actual || '')
@@ -442,7 +456,8 @@ export const createNotificationServer = ({
       return sendJson(response, 400, { success: false, message: 'subject 和 message 不能同时为空' })
     }
 
-    const content = [subject ? `【${subject}】` : '', message].filter(Boolean).join('\n')
+    const title = subject && !subject.startsWith('【') ? `【${subject}】` : subject
+    const content = highlightLowBalance([title, message].filter(Boolean).join('\n'))
     if (content.length > MAX_MESSAGE_LENGTH) {
       return sendJson(response, 400, { success: false, message: `消息长度不能超过 ${MAX_MESSAGE_LENGTH} 个字符` })
     }
